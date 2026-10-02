@@ -1,0 +1,18 @@
+@page "/impressum"
+@layout PublicLayout
+@inject Loc L
+
+<PageTitle>@L["legal.imprint.title"] · @L["app.name"]</PageTitle>
+
+<div class="page-narrow legal" style="padding:1.5rem 0 3rem">
+    <h1>@L["legal.imprint.title"]</h1>
+    <div class="notice warn mb-2"><Icon Name="info" /><div class="small">@L["legal.imprint.note"]</div></div>
+    <h2>@L["legal.imprint.provider"]</h2>
+    <p class="pre-line">@L["legal.imprint.address"]</p>
+    <h2>@L["legal.imprint.contact"]</h2>
+    <p>@L["legal.imprint.contactText"]</p>
+    <h2>@L["legal.imprint.responsible"]</h2>
+    <p>@L["legal.imprint.responsibleText"]</p>
+    <h2>@L["legal.imprint.dispute"]</h2>
+    <p>@L["legal.imprint.disputeText"]</p>
+</div>

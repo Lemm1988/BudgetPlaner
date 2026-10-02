@@ -1,0 +1,113 @@
+@page "/benachrichtigungen"
+@inherits AppComponent
+@inject NotificationCenter Center
+@using BudgetPlaner.Client.Components.Profile
+
+<PageTitle>@L["nav.notifications"] · @L["app.name"]</PageTitle>
+
+<div class="page-narrow">
+    <div class="page-head">
+        <div>
+            <h1>@L["nav.notifications"]</h1>
+            <p class="lead">@L["notifications.lead"]</p>
+        </div>
+        <div class="page-actions">
+            @if (Center.Unread > 0)
+            {
+                <button class="btn" @onclick="Center.MarkAllAsync"><Icon Name="check" />@L["notifications.markAll"]</button>
+            }
+        </div>
+    </div>
+
+    <div class="pill-nav" role="tablist" aria-label="@L["nav.notifications"]">
+        <button type="button" role="tab" aria-selected="@(!_settings ? "true" : "false")" @onclick="() => _settings = false">
+            @L["nav.notifications"] @if (Center.Unread > 0) { <span class="badge primary">@Center.Unread</span> }
+        </button>
+        <button type="button" role="tab" aria-selected="@(_settings ? "true" : "false")" @onclick="() => _settings = true">@L["notifications.settings"]</button>
+    </div>
+
+    @if (_settings)
+    {
+        <section class="card"><NotificationSettings /></section>
+    }
+    else
+    {
+        <section class="card" style="padding:0;overflow:hidden" aria-live="polite">
+            <div class="row-between" style="padding:.75rem 1rem">
+                <label class="check"><input type="checkbox" @bind="_unreadOnly" />@L["notifications.unreadOnly"]</label>
+            </div>
+            @{
+                var items = Center.Items.Where(n => !_unreadOnly || n.ReadAt is null).ToList();
+            }
+            @if (items.Count == 0)
+            {
+                <EmptyState Icon="bell" Title="@L["notifications.inboxEmpty"]" />
+            }
+            @foreach (var n in items)
+            {
+                var item = n;
+                <div class="notif @(item.ReadAt is null ? "unread" : "")">
+                    <span class="notif-icon" aria-hidden="true"><Icon Name="@IconOf(item.Type)" /></span>
+                    <div class="n-body">
+                        <div class="n-title">@item.Title</div>
+                        @if (!string.IsNullOrEmpty(item.Body))
+                        {
+                            <div class="small">@item.Body</div>
+                        }
+                        <div class="row mt-1">
+                            <span class="n-time">@L.Ago(item.CreatedAt) · @L.Of(item.Type)</span>
+                            @if (item.Link is not null)
+                            {
+                                <button class="btn btn-sm" @onclick="() => OpenAsync(item)">@L["action.open"]</button>
+                            }
+                            @if (item.ReadAt is null)
+                            {
+                                <button class="btn btn-sm btn-ghost" @onclick="() => Center.MarkReadAsync(item.Id)">@L["notifications.markRead"]</button>
+                            }
+                            <button class="icon-btn sm" aria-label="@L["action.delete"]" @onclick="() => Center.DeleteAsync(item.Id)"><Icon Name="trash" /></button>
+                        </div>
+                    </div>
+                </div>
+            }
+        </section>
+    }
+</div>
+
+@code {
+    private bool _settings, _unreadOnly;
+
+    [SupplyParameterFromQuery(Name = "einstellungen")] public bool? SettingsQuery { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _settings = SettingsQuery == true;
+        Center.Changed += OnCenterChanged;
+        await Center.LoadAsync();
+    }
+
+    private void OnCenterChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public override void Dispose()
+    {
+        Center.Changed -= OnCenterChanged;
+        base.Dispose();
+    }
+
+    private static string IconOf(NotificationType t) => t switch
+    {
+        NotificationType.MonthStart => "calendar",
+        NotificationType.BufferGoalReached => "target",
+        NotificationType.DebtPaidOff => "check-circle",
+        NotificationType.DebtRateDue => "debt",
+        NotificationType.HouseholdMembership => "users",
+        NotificationType.SyncConflict => "sync",
+        NotificationType.NegativeBalanceForecast or NotificationType.BudgetEarlyWarning or NotificationType.BudgetOverplanned => "alert",
+        _ => "bell",
+    };
+
+    private async Task OpenAsync(NotificationDto n)
+    {
+        await Center.MarkReadAsync(n.Id);
+        if (n.Link is { } link && link.StartsWith('/')) Nav.NavigateTo(link);
+    }
+}

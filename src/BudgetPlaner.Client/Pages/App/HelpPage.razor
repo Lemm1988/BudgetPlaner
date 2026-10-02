@@ -1,0 +1,182 @@
+@page "/hilfe"
+@inherits AppComponent
+
+<PageTitle>@L["nav.help"] · @L["app.name"]</PageTitle>
+
+<div class="page-narrow">
+    <div class="page-head">
+        <div>
+            <h1>@L["nav.help"]</h1>
+            <p class="lead">@L["help.lead"]</p>
+        </div>
+    </div>
+
+    <div class="field mb-2" role="search">
+        <label for="help-q">@L["help.search"]</label>
+        <input id="help-q" class="input" type="search" placeholder="@L["help.searchPlaceholder"]" @bind="_q" @bind:event="oninput" autocomplete="off" />
+    </div>
+
+    @if (Searching)
+    {
+        var faqHits = Faq.Where(i => Matches(L[$"faq.{i}.q"]) || Matches(L[$"faq.{i}.a"])).ToList();
+        <section class="card mb-2" aria-live="polite">
+            @if (faqHits.Count > 0)
+            {
+                <h2>@L["help.faq"]</h2>
+                @foreach (var i in faqHits)
+                {
+                    <details class="faq" open>
+                        <summary>@L[$"faq.{i}.q"]</summary>
+                        <p>@L[$"faq.{i}.a"]</p>
+                    </details>
+                }
+            }
+            <h2 class="mt-2">@L["help.glossary"]</h2>
+            <GlossaryList ShowFilter="false" Query="@_q" BasePath="/hilfe" />
+        </section>
+    }
+    else
+    {
+        <div class="stack">
+            <section class="card" aria-labelledby="h-start">
+                <div class="card-head"><h2 id="h-start">@L["help.start"]</h2></div>
+                <ol class="howto">
+                    @for (var i = 1; i <= 3; i++)
+                    {
+                        <li><strong>@L[$"landing.how.{i}.title"]</strong><span>@L[$"landing.how.{i}.text"]</span></li>
+                    }
+                </ol>
+                <div class="row mt-1">
+                    <button class="btn btn-primary" @onclick="StartWizard"><Icon Name="flag" />@L["help.startWizard"]</button>
+                    <a class="btn" href="/profil#pf-data"><Icon Name="layers" />@L["demo.load"]</a>
+                </div>
+            </section>
+
+            <section class="card" aria-labelledby="h-modules">
+                <div class="card-head"><h2 id="h-modules">@L["help.modules"]</h2></div>
+                <div class="grid grid-2" style="gap:.9rem">
+                    @foreach (var (key, icon, href) in Modules)
+                    {
+                        <a class="feature card flat link" href="@href">
+                            <span class="f-icon"><Icon Name="@icon" /></span>
+                            <span>
+                                <strong>@L[$"landing.area.{key}.title"]</strong>
+                                <span class="small muted" style="display:block">@L[$"landing.area.{key}.text"]</span>
+                            </span>
+                        </a>
+                    }
+                </div>
+            </section>
+
+            <section class="card" aria-labelledby="h-faq">
+                <div class="card-head"><h2 id="h-faq">@L["help.faq"]</h2></div>
+                @foreach (var i in Faq)
+                {
+                    <details class="faq">
+                        <summary>@L[$"faq.{i}.q"]</summary>
+                        <p>@L[$"faq.{i}.a"]</p>
+                    </details>
+                }
+            </section>
+
+            <section class="card" aria-labelledby="h-install">
+                <div class="card-head"><h2 id="h-install">@L["help.install"] <InfoTip Term="pwa" /></h2></div>
+                <ul class="list">
+                    <li class="list-row"><Icon Name="phone" /><span class="grow">@L["help.install.android"]</span></li>
+                    <li class="list-row"><Icon Name="share" /><span class="grow">@L["help.install.ios"]</span></li>
+                    <li class="list-row"><Icon Name="monitor" /><span class="grow">@L["help.install.desktop"]</span></li>
+                </ul>
+                <p class="small muted mt-1 mb-0">@L["help.install.offline"]</p>
+            </section>
+
+            <section class="card" aria-labelledby="h-keys">
+                <div class="card-head"><h2 id="h-keys">@L["help.keyboard"]</h2></div>
+                <p class="mb-0">@L["help.keyboardText"]</p>
+            </section>
+
+            <section class="card" aria-labelledby="h-glossary" id="glossar">
+                <div class="card-head"><h2 id="h-glossary">@L["help.glossary"]</h2></div>
+                <p class="small muted">@L.T("help.glossaryLead", GlossaryList.AllTerms(L).Count())</p>
+                <GlossaryList BasePath="/hilfe" Compact="true" />
+            </section>
+
+            <section class="card" aria-labelledby="h-feedback">
+                <div class="card-head"><h2 id="h-feedback">@L["help.feedback"]</h2></div>
+                <p class="small muted">@L["help.feedbackLead"]</p>
+                @if (_sent)
+                {
+                    <div class="notice good"><Icon Name="heart" /><div>@L["help.feedbackThanks"]</div></div>
+                }
+                else
+                {
+                    <form class="stack" @onsubmit="SendAsync" @onsubmit:preventDefault="true">
+                        <fieldset>
+                            <legend class="label">@L["help.feedbackRating"]</legend>
+                            <div class="stars" role="radiogroup">
+                                @for (var s = 1; s <= 5; s++)
+                                {
+                                    var star = s;
+                                    <label class="star">
+                                        <input type="radio" name="fb-rating" checked="@(_rating == star)" @onchange="() => _rating = star" />
+                                        <span aria-hidden="true" class="@(_rating >= star ? "on" : "")">★</span>
+                                        <span class="sr-only">@L.T("help.feedbackStars", star)</span>
+                                    </label>
+                                }
+                            </div>
+                        </fieldset>
+                        <div class="field">
+                            <label for="fb-msg">@L["help.feedbackMessage"]</label>
+                            <textarea id="fb-msg" class="textarea" rows="4" maxlength="4000" @bind="_message" required></textarea>
+                        </div>
+                        <div><button type="submit" class="btn btn-primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_message))"><Icon Name="message" />@L["help.feedbackSend"]</button></div>
+                    </form>
+                }
+            </section>
+
+            <section class="card" aria-labelledby="h-api">
+                <div class="card-head"><h2 id="h-api">@L["help.api"]</h2></div>
+                <p>@L["help.apiText"]</p>
+                <div class="row">
+                    <a class="btn" href="/api/docs" target="_blank" rel="noopener"><Icon Name="code" />@L["help.openDocs"]</a>
+                    <a class="btn btn-ghost" href="/profil#pf-api">@L["profile.apiTokens"]</a>
+                </div>
+                <p class="small muted mt-2 mb-0">@L.T("app.version", AppInfo.Version) · <a href="/neuigkeiten">@L["nav.releaseNotes"]</a> · <a href="/impressum">@L["nav.imprint"]</a> · <a href="/datenschutz">@L["nav.privacy"]</a></p>
+            </section>
+        </div>
+    }
+</div>
+
+@code {
+    private static readonly int[] Faq = [1, 2, 3, 4, 5, 6, 7, 8];
+    private static readonly (string Key, string Icon, string Href)[] Modules =
+    [
+        ("overview", "overview", "/uebersicht"), ("budget", "wallet", "/budget"), ("debts", "debt", "/schulden"), ("cashflow", "calendar", "/cashflow"),
+        ("buffers", "piggy", "/polster"), ("statistics", "bars", "/statistik"), ("forecasts", "forecast", "/prognosen"), ("household", "users", "/haushalt"),
+    ];
+
+    private string _q = "", _message = "";
+    private int _rating;
+    private bool _busy, _sent;
+
+    private bool Searching => _q.Trim().Length >= 2;
+
+    private bool Matches(string text) => text.Contains(_q.Trim(), StringComparison.CurrentCultureIgnoreCase);
+
+    private void StartWizard()
+    {
+        Ui.ShowOnboarding = true;
+        Ui.Notify();
+    }
+
+    private async Task SendAsync()
+    {
+        _busy = true;
+        try
+        {
+            await Api.PostAsync("api/v1/feedback", new FeedbackRequest(_message.Trim(), _rating > 0 ? _rating : null, "/hilfe"));
+            _sent = true;
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+}

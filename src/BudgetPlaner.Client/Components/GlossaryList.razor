@@ -1,0 +1,82 @@
+@inject Loc L
+
+@* Finanz-Glossar (B-11, F-141): alle Fachbegriffe mit Anker #g-{begriff}, filterbar. *@
+<div class="stack">
+    @if (ShowFilter)
+    {
+        <div class="field" style="max-width:420px">
+            <label for="gl-filter">@L["glossary.filter"]</label>
+            <input id="gl-filter" class="input" type="search" @bind="_filter" @bind:event="oninput" autocomplete="off" />
+        </div>
+    }
+    <nav class="glossary-index" aria-label="@L["glossary.title"]">
+        @foreach (var letter in Visible.Select(t => char.ToUpperInvariant(L[$"glossary.{t}.title"][0])).Distinct())
+        {
+            <a href="@($"{BasePath}#gl-{letter}")">@letter</a>
+        }
+    </nav>
+    <div class="glossary">
+        @foreach (var group in Visible.GroupBy(t => char.ToUpperInvariant(L[$"glossary.{t}.title"][0])))
+        {
+            <section aria-labelledby="gl-@group.Key">
+                <h3 class="glossary-letter" id="gl-@group.Key">@group.Key</h3>
+                <dl class="mb-0">
+                    @foreach (var term in group)
+                    {
+                        <div class="glossary-item" id="g-@term">
+                            <dt>@L[$"glossary.{term}.title"]</dt>
+                            <dd>
+                                @if (Compact)
+                                {
+                                    <p class="mb-0">@L[$"glossary.{term}.short"]</p>
+                                    <details class="glossary-more">
+                                        <summary>@L["glossary.more"]</summary>
+                                        <p class="mb-0">@L[$"glossary.{term}.text"]</p>
+                                    </details>
+                                }
+                                else
+                                {
+                                    <p class="mb-1"><strong>@L[$"glossary.{term}.short"]</strong></p>
+                                    <p class="mb-0">@L[$"glossary.{term}.text"]</p>
+                                }
+                            </dd>
+                        </div>
+                    }
+                </dl>
+            </section>
+        }
+    </div>
+    @if (!Visible.Any())
+    {
+        <p class="muted">@L["help.noResults"]</p>
+    }
+</div>
+
+@code {
+    private string _filter = "";
+
+    [Parameter] public bool ShowFilter { get; set; } = true;
+    [Parameter] public string BasePath { get; set; } = "/glossar";
+    /// <summary>Nur Kurzerklärung, ausführlicher Text aufklappbar (Hilfeseite).</summary>
+    [Parameter] public bool Compact { get; set; }
+    /// <summary>Externer Suchbegriff (z. B. aus der Hilfesuche).</summary>
+    [Parameter] public string? Query { get; set; }
+
+    public static IEnumerable<string> AllTerms(Loc l) => Texts.Keys(l.Lang)
+        .Where(k => k.StartsWith("glossary.", StringComparison.Ordinal) && k.EndsWith(".title", StringComparison.Ordinal) && k.Count(c => c == '.') == 2)
+        .Select(k => k.Split('.')[1]);
+
+    private IEnumerable<string> Visible
+    {
+        get
+        {
+            var q = (Query ?? _filter).Trim();
+            return AllTerms(L)
+                .Where(t => q.Length == 0
+                            || L[$"glossary.{t}.title"].Contains(q, StringComparison.CurrentCultureIgnoreCase)
+                            || L[$"glossary.{t}.short"].Contains(q, StringComparison.CurrentCultureIgnoreCase)
+                            || L[$"glossary.{t}.text"].Contains(q, StringComparison.CurrentCultureIgnoreCase))
+                .OrderBy(t => L[$"glossary.{t}.title"], StringComparer.Create(System.Globalization.CultureInfo.GetCultureInfo(L.Lang == "en" ? "en-US" : "de-DE"), true));
+        }
+    }
+}

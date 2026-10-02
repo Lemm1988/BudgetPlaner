@@ -1,0 +1,90 @@
+@inherits AppComponent
+
+@* Zahlung bzw. Sondertilgung verbuchen (F-021); Zins-/Tilgungsanteil berechnet die Domäne. *@
+<Modal Title="@L["debt.paymentTitle"]" OnClose="OnClose">
+    <ChildContent>
+        <form id="pay-form" @onsubmit="SaveAsync" @onsubmit:preventDefault="true" class="stack">
+            <p class="muted mb-0">@Debt.Name · @L["debt.balance"]: <strong class="num">@L.Money(Status.Balance)</strong></p>
+            <fieldset>
+                <legend>@L["debt.paymentKind"]</legend>
+                <div class="segmented" role="radiogroup">
+                    <label><input type="radio" name="pay-kind" checked="@(!_extra)" @onchange="() => SetExtra(false)" /><span>@L["debt.paymentRegular"]</span></label>
+                    <label><input type="radio" name="pay-kind" checked="@_extra" @onchange="() => SetExtra(true)" /><span>@L["debt.extraPayment"]</span></label>
+                </div>
+            </fieldset>
+            <div class="form-grid">
+                <AmountField Label="@L["col.amount"]" Value="_amount" ValueChanged="v => _amount = v" Required="true" />
+                <div class="field">
+                    <label for="pay-date">@L["debt.paymentDate"]</label>
+                    <input id="pay-date" class="input" type="date" value="@_date.ToString("yyyy-MM-dd")"
+                           @onchange="e => { if (DateOnly.TryParse(e.Value?.ToString(), out var d)) _date = d; }" />
+                </div>
+            </div>
+            <div>
+                <label class="check"><input type="checkbox" @bind="_inBudget" />@L["debt.paymentInBudget"]</label>
+                <p class="small muted mb-0">@L["debt.paymentInBudgetHint"]</p>
+            </div>
+            @if (!_extra && Act.LinkedEntry(Debt, DebtRole.Rate) is not null && Debt.AutoBook)
+            {
+                <div class="notice info"><Icon Name="info" /><div class="small">@L["debt.paymentAutoHint"]</div></div>
+            }
+            <div class="field">
+                <label for="pay-note">@L["col.note"]</label>
+                <input id="pay-note" class="input" @bind="_note" maxlength="200" />
+            </div>
+            @if (_error is not null)
+            {
+                <p class="form-error" role="alert">@_error</p>
+            }
+        </form>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn" @onclick="OnClose">@L["action.cancel"]</button>
+        <button type="submit" form="pay-form" class="btn btn-primary" disabled="@_busy"><Icon Name="check" />@L["debt.bookPayment"]</button>
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter, EditorRequired] public DebtEntry Debt { get; set; } = default!;
+    [Parameter] public bool Extra { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private bool _extra, _inBudget = true, _busy;
+    private decimal? _amount;
+    private DateOnly _date;
+    private string? _note, _error;
+
+    private DebtStatus Status => Engine.Debts.Status(Debt.Id);
+
+    // Nur beim Öffnen initialisieren: OnParametersSet liefe bei jedem Neu-Rendern der Seite (z. B. Sync) und würde Eingaben verwerfen.
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        _date = Store.Engine.Today;
+        SetExtra(Extra);
+    }
+
+    private void SetExtra(bool extra)
+    {
+        _extra = extra;
+        if (extra || _amount is > 0) return;
+        var rate = Engine.Debts.RegularRate(Debt, Current);
+        _amount = rate > 0 ? rate : Debt.MonthlyRate;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (_amount is not > 0) { _error = L["err.amount.required"]; return; }
+        var max = Status.Balance + (_extra ? 0 : Status.NextMonthInterest);
+        if (_amount.Value > max + 0.01m) { _error = L.T("debt.paymentExceeds", L.Money(Status.Balance)); return; }
+        _busy = true;
+        try
+        {
+            await Act.BookPaymentAsync(Debt, _amount.Value, _date, _extra, _inBudget, string.IsNullOrWhiteSpace(_note) ? null : _note.Trim());
+            await OnClose.InvokeAsync();
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+}

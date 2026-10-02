@@ -1,0 +1,48 @@
+@implements IDisposable
+@inject SyncClient Sync
+@inject DataStore Store
+@inject Loc L
+
+@* Status der Synchronisation (F-131/F-132): synchron, wird übertragen, offline mit ausstehenden Änderungen. *@
+<button class="icon-btn" title="@Title" aria-label="@Title" @onclick="SyncNow">
+    @if (!Sync.IsOnline)
+    {
+        <Icon Name="cloud-off" />
+    }
+    else if (Sync.IsSyncing || Store.PendingCount > 0)
+    {
+        <span class="spinner" aria-hidden="true" style="width:20px;height:20px;border-width:2px"></span>
+    }
+    else
+    {
+        <Icon Name="cloud" />
+    }
+    @if (Store.PendingCount > 0)
+    {
+        <span class="dot-badge">@Store.PendingCount</span>
+    }
+</button>
+
+@code {
+    private string Title =>
+        !Sync.IsOnline ? L["sync.offline"]
+        : Store.PendingCount > 0 ? L.T("sync.pending", Store.PendingCount)
+        : Sync.LastSync is { } t ? L.T("sync.synced", t.ToString("HH:mm"))
+        : L["sync.syncing"];
+
+    protected override void OnInitialized()
+    {
+        Sync.StatusChanged += Refresh;
+        Store.Changed += Refresh;
+    }
+
+    private async Task SyncNow() => await Sync.SyncNowAsync();
+
+    private void Refresh() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Sync.StatusChanged -= Refresh;
+        Store.Changed -= Refresh;
+    }
+}

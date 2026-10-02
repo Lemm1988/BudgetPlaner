@@ -1,0 +1,374 @@
+@page "/schulden/{Id:guid}"
+@inherits AppComponent
+@using BudgetPlaner.Client.Components.Debts
+@using BudgetPlaner.Client.Components.Charts
+
+<PageTitle>@(Debt?.Name ?? L["nav.debts"]) · @L["app.name"]</PageTitle>
+
+<div class="page">
+    <a class="btn btn-ghost btn-sm mb-1" href="/schulden"><Icon Name="chevron-left" />@L["debt.backToList"]</a>
+
+    @if (!Store.IsLoaded)
+    {
+        <div class="card"><div class="skeleton" style="height:10rem"></div></div>
+    }
+    else if (Debt is null)
+    {
+        <div class="card"><EmptyState Icon="debt" Title="@L["debt.notFound"]"><a class="btn" href="/schulden">@L["debt.backToList"]</a></EmptyState></div>
+    }
+    else
+    {
+        var s = Status!;
+        var f = Engine.Debts.Forecast(Debt.Id);
+        <div class="page-head">
+            <div>
+                <h1>@Debt.Name</h1>
+                <p class="lead">@L.Of(Debt.Type)@(Debt.Creditor is { } cr ? " · " + cr : "")</p>
+            </div>
+            <div class="page-actions">
+                @if (!s.IsPaidOff)
+                {
+                    <button class="btn btn-primary" @onclick="() => OpenPayment(false)"><Icon Name="plus" />@L["debt.bookPayment"]</button>
+                }
+                <button class="btn" @onclick="() => _editing = true"><Icon Name="edit" />@L["action.edit"]</button>
+                <div class="menu-wrap">
+                    <OutsideClick OnOutside="() => _menu = false" Active="_menu">
+                        <button class="btn" aria-haspopup="menu" aria-expanded="@(_menu ? "true" : "false")" @onclick="() => _menu = !_menu"><Icon Name="more" /><span class="sr-only">@L["action.more"]</span></button>
+                        @if (_menu)
+                        {
+                            <div class="menu" role="menu">
+                                @if (!s.IsPaidOff)
+                                {
+                                    <button role="menuitem" @onclick="() => OpenPayment(true)"><Icon Name="trend-down" />@L["debt.extraPayment"]</button>
+                                }
+                                <button role="menuitem" class="danger" @onclick="() => { _menu = false; _deleting = true; }"><Icon Name="trash" />@L["action.delete"]</button>
+                            </div>
+                        }
+                    </OutsideClick>
+                </div>
+            </div>
+        </div>
+
+        @if (s.IsPaidOff)
+        {
+            <div class="notice good mb-2"><Icon Name="check-circle" /><div><strong>@(s.PaidOffDate is { } pd ? L.T("debts.paidOffOn", L.Date(pd)) : L["debts.paidOff"])</strong></div></div>
+        }
+        else if (s.RateBelowInterest)
+        {
+            <div class="notice bad mb-2" role="alert"><Icon Name="alert" /><div>@L["debts.rateBelowInterest"]</div></div>
+        }
+        @if (!s.IsPaidOff && Debt.FixedInterestUntil is { } fixedUntil && fixedUntil <= Engine.Today.AddMonths(18))
+        {
+            <div class="notice warn mb-2"><Icon Name="clock" /><div>@L.T("debt.fixedUntilSoon", L.Date(fixedUntil))</div></div>
+        }
+
+        <section class="card mb-2" aria-label="@L["debts.summary"]">
+            <div class="grid grid-4" style="gap:.9rem">
+                <div class="stat">
+                    <span class="stat-label">@L["debt.balance"] <InfoTip Term="restschuld" /></span>
+                    <span class="stat-value">@L.Money(s.Balance)</span>
+                    <span class="stat-hint">@L["debt.original"]: @L.Money(Math.Max(Debt.OriginalAmount, Debt.OpeningBalance))</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">@L["debt.payoff"]</span>
+                    <span class="stat-value sm @(f.Possible ? "" : "neg")">@(f.Possible && f.PayoffDate is { } pdate ? L.Date(pdate) : L["debt.payoffUnknown"])</span>
+                    @if (f.Possible && f.Months is > 0 and var months)
+                    {
+                        <span class="stat-hint">@L.T("debts.debtFreeIn", L.Duration(months, dative: true))</span>
+                    }
+                    else if (!f.Possible && f.Reason is { } reason)
+                    {
+                        <span class="stat-hint">@L["debt.reason." + reason]</span>
+                    }
+                </div>
+                <div class="stat">
+                    <span class="stat-label">@L["debt.currentPayment"] <InfoTip Term="annuitaet" /></span>
+                    <span class="stat-value sm">@L.Money(s.CurrentMonthlyPayment)</span>
+                    <span class="stat-hint">@(Debt.InterestRate is > 0 ? L.T("debt.ratePa", L.Pct(Debt.InterestRate, 2)) : L["debt.interestFree"])</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">@L["debt.remainingInterest"]</span>
+                    <span class="stat-value sm">@(f.Possible ? L.Money(f.TotalInterest) : "–")</span>
+                    <span class="stat-hint">@L["debt.nextInterest"]: @L.Money(s.NextMonthInterest)</span>
+                </div>
+            </div>
+            <div class="mt-2">
+                <div class="row-between small"><span class="muted">@L["debt.progress"]</span><strong>@L.T("debts.percentRepaid", L.Pct(s.ProgressPercent, 0))</strong></div>
+                <ProgressBar Percent="s.ProgressPercent" Label="@L["debt.progress"]" Large="true" Variant="good" />
+            </div>
+            <dl class="detail-grid mt-2">
+                <div><dt>@L["debt.principalPaid"]</dt><dd class="num">@L.Money(s.PrincipalPaid)</dd></div>
+                <div><dt>@L["debt.interestPaid"]</dt><dd class="num">@L.Money(s.InterestPaid)</dd></div>
+                <div><dt>@L["debt.asOf"]</dt><dd>@L.Date(Debt.StartDate) · @L.Money(Debt.OpeningBalance)</dd></div>
+                @if (Debt.DebitDay is { } dd)
+                {
+                    <div><dt>@L["debt.debitDay"]</dt><dd>@L.T("budget.dayOfMonth", dd)</dd></div>
+                }
+                @if (Debt.FixedInterestUntil is { } fu)
+                {
+                    <div><dt>@L["debt.fixedUntil"]</dt><dd>@L.Date(fu)</dd></div>
+                }
+                @if (Debt.ResidualValue is { } rv)
+                {
+                    <div><dt>@L["debt.residual"]</dt><dd class="num">@L.Money(rv)</dd></div>
+                }
+                @if (Debt.TermMonths is { } tm)
+                {
+                    <div><dt>@L["debt.term"]</dt><dd>@L.Duration(tm)</dd></div>
+                }
+            </dl>
+            @if (Debt.Note is { } note)
+            {
+                <p class="small muted mt-1 mb-0">@note</p>
+            }
+        </section>
+
+        @if (ChartData is { } c)
+        {
+            <section class="card mb-2" aria-labelledby="debt-chart">
+                <div class="card-head"><h2 id="debt-chart">@L["debt.chartTitle"]</h2></div>
+                <LineChart Title="@L["debt.chartTitle"]" Labels="c.Labels" TooltipLabels="c.Tooltips" Series="c.Series"
+                           Format="v => L.Money(v)" AxisFormat="v => L.MoneyCompact(v)" MarkIndex="c.TodayIndex" MarkLabel="@L["month.today"]" Height="240" />
+                <p class="small muted mt-1 mb-0">@(f.Method == "linear" ? L["debt.method.linear"] : L["debt.method.annuity"])</p>
+            </section>
+        }
+
+        <div class="grid grid-2 start mb-2">
+            <section class="card" aria-labelledby="debt-linked">
+                <div class="card-head"><h2 id="debt-linked">@L["debt.linkedEntries"]</h2></div>
+                @{
+                    var linked = (Ix.EntriesByDebt.GetValueOrDefault(Debt.Id) ?? []).Where(e => e.EndPeriod is null || e.EndPeriod >= Current).ToList();
+                }
+                @if (linked.Count == 0)
+                {
+                    <p class="muted small mb-0">@L["debt.noLinked"]</p>
+                }
+                else
+                {
+                    <ul class="list">
+                        @foreach (var e in linked)
+                        {
+                            <li class="list-row">
+                                <Icon Name="@(e.DebtRole == DebtRole.Extra ? "trend-down" : "calendar")" />
+                                <div class="grow">
+                                    <a href="/budget?monat=@Period.Max(Current, e.StartPeriod)">@e.Name</a>
+                                    <div class="small muted">@(e.DebtRole == DebtRole.Extra ? L["debt.linkedExtra"] : L["debt.linkedRate"]) · @L.Of(e.Rhythm)@(e.DebitDay is { } d ? " · " + L.T("budget.dayOfMonth", d) : "")</div>
+                                </div>
+                                <span class="num">@L.Money(Act.NominalAmount(e, Period.Max(Current, e.StartPeriod)))</span>
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+
+            <section class="card" aria-labelledby="debt-payments">
+                <div class="card-head">
+                    <h2 id="debt-payments">@L["debt.payments"]</h2>
+                    <span class="badge">@s.Payments.Count</span>
+                </div>
+                @if (s.Payments.Count == 0)
+                {
+                    <p class="muted small mb-0">@L["debt.noPayments"]</p>
+                }
+                else
+                {
+                    <ul class="list">
+                        @foreach (var p in s.Payments.OrderByDescending(x => x.Date).Take(_paymentsShown))
+                        {
+                            <li class="list-row">
+                                <div class="grow">
+                                    <div class="row" style="gap:.4rem">
+                                        <strong class="num">@L.Money(p.Amount)</strong>
+                                        @if (p.IsExtra) { <span class="badge accent">@L["debt.extraPayment"]</span> }
+                                        @if (p.SourceEntryId is not null) { <a class="badge primary" href="/budget?monat=@(p.SourcePeriod?.ToString() ?? "")">@L["debt.fromBudget"]</a> }
+                                        @if (p.IsProjected) { <span class="badge">@L["debt.auto"]</span> }
+                                    </div>
+                                    <div class="small muted">
+                                        @L.Date(p.Date) · @L["col.interest"] @L.Money(p.Interest) · @L["col.principal"] @L.Money(p.Principal) · @L["debt.balance"] @L.Money(p.BalanceAfter)
+                                    </div>
+                                    @if (p.Note is { } n) { <div class="small">@n</div> }
+                                </div>
+                                @if (p.PaymentId is { } pid && !IsClosed(p.Date) && Store.Find<DebtPayment>(pid) is { } entity)
+                                {
+                                    <button class="icon-btn sm" aria-label="@L["action.delete"]" @onclick="() => DeletePaymentAsync(entity, p)"><Icon Name="trash" /></button>
+                                }
+                            </li>
+                        }
+                    </ul>
+                    @if (s.Payments.Count > _paymentsShown)
+                    {
+                        <button class="btn btn-ghost btn-sm mt-1" @onclick="() => _paymentsShown += 20">@L["action.more"] (@(s.Payments.Count - _paymentsShown))</button>
+                    }
+                }
+            </section>
+        </div>
+
+        @if (f.Schedule.Count > 0)
+        {
+            <section class="card" aria-labelledby="debt-schedule">
+                <div class="card-head">
+                    <h2 id="debt-schedule">@L["debt.schedule"] <InfoTip Term="tilgung" /></h2>
+                    <div class="segmented" role="group" aria-label="@L["debt.schedule"]">
+                        <button type="button" aria-pressed="@(!_yearly ? "true" : "false")" @onclick="() => _yearly = false">@L["debt.scheduleMonthly"]</button>
+                        <button type="button" aria-pressed="@(_yearly ? "true" : "false")" @onclick="() => _yearly = true">@L["debt.scheduleYearly"]</button>
+                    </div>
+                </div>
+                <p class="small muted">@L["debt.scheduleLead"]</p>
+                <div class="table-wrap" style="max-height:480px">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th scope="col">@(_yearly ? L["stats.year"] : L["col.period"])</th>
+                                <th scope="col" class="num">@L["debt.paymentRegular"]</th>
+                                <th scope="col" class="num">@L["col.interest"]</th>
+                                <th scope="col" class="num">@L["col.principal"]</th>
+                                <th scope="col" class="num">@L["col.extra"]</th>
+                                <th scope="col" class="num">@L["col.balance"]</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (_yearly)
+                            {
+                                @foreach (var y in f.Schedule.GroupBy(r => r.Period.Year))
+                                {
+                                    <tr>
+                                        <th scope="row">@y.Key</th>
+                                        <td class="num">@L.Money(y.Sum(r => r.Payment))</td>
+                                        <td class="num">@L.Money(y.Sum(r => r.Interest))</td>
+                                        <td class="num">@L.Money(y.Sum(r => r.Principal - Math.Min(r.Principal, r.Extra)))</td>
+                                        <td class="num">@L.Money(y.Sum(r => r.Extra))</td>
+                                        <td class="num">@L.Money(y.Last().Balance)</td>
+                                    </tr>
+                                }
+                            }
+                            else
+                            {
+                                @foreach (var r in f.Schedule.Take(_scheduleAll ? int.MaxValue : 24))
+                                {
+                                    <tr>
+                                        <th scope="row">@L.Period(r.Period, shortName: true)</th>
+                                        <td class="num">@L.Money(r.Payment)</td>
+                                        <td class="num">@L.Money(r.Interest)</td>
+                                        <td class="num">@L.Money(r.Principal - Math.Min(r.Principal, r.Extra))</td>
+                                        <td class="num">@(r.Extra > 0 ? L.Money(r.Extra) : "–")</td>
+                                        <td class="num">@L.Money(r.Balance)</td>
+                                    </tr>
+                                }
+                            }
+                            <tr class="total">
+                                <th scope="row">@L["chart.total"]</th>
+                                <td class="num">@L.Money(f.Schedule.Sum(r => r.Payment))</td>
+                                <td class="num">@L.Money(f.Schedule.Sum(r => r.Interest))</td>
+                                <td class="num">@L.Money(f.Schedule.Sum(r => r.Principal - Math.Min(r.Principal, r.Extra)))</td>
+                                <td class="num">@L.Money(f.Schedule.Sum(r => r.Extra))</td>
+                                <td class="num">@L.Money(f.Schedule[^1].Balance)</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                @if (!_yearly && !_scheduleAll && f.Schedule.Count > 24)
+                {
+                    <button class="btn btn-ghost btn-sm mt-1" @onclick="() => _scheduleAll = true">@L.T("debt.scheduleShowAll", f.Schedule.Count)</button>
+                }
+            </section>
+        }
+    }
+</div>
+
+@if (_editing && Debt is not null)
+{
+    <DebtDialog Debt="Debt" OnClose="() => _editing = false" />
+}
+@if (_paying is { } extra && Debt is not null)
+{
+    <PaymentDialog Debt="Debt" Extra="extra" OnClose="() => _paying = null" />
+}
+@if (_deleting && Debt is not null)
+{
+    <Modal Title="@L["debt.deleteTitle"]" OnClose="() => _deleting = false">
+        <ChildContent>
+            <p>@L.T("debt.deleteText", Debt.Name)</p>
+            @if ((Ix.EntriesByDebt.GetValueOrDefault(Debt.Id)?.Length ?? 0) > 0)
+            {
+                <label class="check"><input type="checkbox" @bind="_deleteLinked" />@L["debt.deleteLinked"]</label>
+            }
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn" @onclick="() => _deleting = false">@L["action.cancel"]</button>
+            <button type="button" class="btn btn-danger" @onclick="DeleteAsync"><Icon Name="trash" />@L["action.delete"]</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private bool _editing, _deleting, _deleteLinked, _menu, _yearly, _scheduleAll;
+    private bool? _paying;
+    private int _paymentsShown = 20;
+
+    private DebtEntry? Debt => Ix.DebtById.GetValueOrDefault(Id);
+
+    private bool IsClosed(DateOnly date) => Ix.SnapshotByPeriod.ContainsKey(Ix.Calendar.PeriodOf(date).Index);
+    private DebtStatus? Status => Debt is null ? null : Engine.Debts.Status(Id);
+
+    private void OpenPayment(bool extra)
+    {
+        _menu = false;
+        _paying = extra;
+    }
+
+    private sealed record DebtChart(List<string> Labels, List<string> Tooltips, List<ChartSeries> Series, int? TodayIndex);
+
+    /// <summary>Verlauf (durchgezogen) bis heute, Prognose (gestrichelt, eigene Farbe) bis zur Tilgung (F-070-Konvention).</summary>
+    private DebtChart? ChartData
+    {
+        get
+        {
+            if (Debt is null) return null;
+            var cal = Ix.Calendar;
+            var start = cal.PeriodOf(Debt.StartDate);
+            var schedule = Engine.Debts.Forecast(Id).Schedule;
+            var end = schedule.Count > 0 ? schedule[^1].Period : Current;
+            if (end < Current) end = Current;
+            if (start > Current) start = Current;
+            var periods = Period.Range(start, end).ToList();
+            if (periods.Count < 2) return null;
+            var step = periods.Count <= 60 ? 1 : periods.Count <= 180 ? 3 : 12;
+            var currentIdx = periods.IndexOf(Current);
+            var picks = periods.Select((p, i) => (p, i)).Where(x => x.i % step == 0 || x.i == currentIdx || x.i == periods.Count - 1).Select(x => x.p).ToList();
+            var forecastByPeriod = schedule.GroupBy(r => r.Period).ToDictionary(g => g.Key, g => g.Last().Balance);
+            var balanceNow = Status!.Balance;
+            var history = new List<decimal?>();
+            var forecast = new List<decimal?>();
+            foreach (var p in picks)
+            {
+                if (p < Current) history.Add(Engine.Debts.BalanceAt(Id, cal.End(p)));
+                else if (p == Current) history.Add(balanceNow);
+                else history.Add(null);
+
+                if (p == Current) forecast.Add(balanceNow);
+                else if (p > Current) forecast.Add(forecastByPeriod.TryGetValue(p, out var b) ? b : null);
+                else forecast.Add(null);
+            }
+            var series = new List<ChartSeries> { new(L["debt.history"], history, ChartColors.At(0), Area: true) };
+            if (forecast.Count(v => v is not null) > 1) series.Add(new ChartSeries(L["debt.forecast"], forecast, ChartColors.At(1), Dashed: true));
+            return new DebtChart(picks.Select(p => L.Period(p, shortName: true)).ToList(), picks.Select(p => L.Period(p)).ToList(), series, picks.IndexOf(Current));
+        }
+    }
+
+    private async Task DeletePaymentAsync(DebtPayment entity, PaymentView view)
+    {
+        if (!await Confirm.AskAsync(L["debt.deletePaymentTitle"], L.T("debt.deletePaymentText", L.Date(view.Date), L.Money(view.Amount)), L["action.delete"], danger: true)) return;
+        await Act.DeletePaymentAsync(entity);
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (Debt is null) return;
+        var debt = Debt;
+        _deleting = false;
+        await Act.DeleteDebtAsync(debt, _deleteLinked);
+        Nav.NavigateTo("/schulden");
+    }
+}

@@ -1,0 +1,52 @@
+@inject Loc L
+@using BudgetPlaner.Domain.Calculators
+@using BudgetPlaner.Client.Components.Charts
+
+@* Tilgungsplan pro Jahr mit Restschuld-Diagramm (Kredit- und Baufinanzierungsrechner). *@
+<section class="card" aria-label="@Title">
+    <div class="card-head"><h2>@Title <InfoTip Term="tilgung" /></h2></div>
+    @if (Years.Count > 1)
+    {
+        <LineChart Title="@L["calc.loan.chart"]" Labels="Years.Select(y => y.Year.ToString()).ToList()" XTitle="@L["calc.year"]"
+                   Series="@(new List<ChartSeries> { new(L["calc.loan.chart"], Years.Select(y => (decimal?)y.Balance).ToList(), ChartColors.At(0), Area: true) })"
+                   Format="v => L.Money(v, decimals: 0)" AxisFormat="v => L.MoneyCompact(v)" Height="220" />
+    }
+    <div class="table-wrap mt-2" style="max-height:420px">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th scope="col">@L["calc.year"]</th>
+                    <th scope="col" class="num">@L["debt.paymentRegular"]</th>
+                    <th scope="col" class="num">@L["col.interest"]</th>
+                    <th scope="col" class="num">@L["col.principal"]</th>
+                    @if (Years.Any(y => y.SpecialRepayment > 0))
+                    {
+                        <th scope="col" class="num">@L["col.extra"]</th>
+                    }
+                    <th scope="col" class="num">@L["col.balance"]</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var y in Years)
+                {
+                    <tr>
+                        <th scope="row">@y.Year</th>
+                        <td class="num">@L.Money(y.Payments)</td>
+                        <td class="num">@L.Money(y.Interest)</td>
+                        <td class="num">@L.Money(y.Principal)</td>
+                        @if (Years.Any(x => x.SpecialRepayment > 0))
+                        {
+                            <td class="num">@L.Money(y.SpecialRepayment)</td>
+                        }
+                        <td class="num">@L.Money(y.Balance)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@code {
+    [Parameter] public IReadOnlyList<AmortizationYear> Years { get; set; } = [];
+    [Parameter] public string Title { get; set; } = "";
+}

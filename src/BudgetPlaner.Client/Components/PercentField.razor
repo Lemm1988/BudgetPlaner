@@ -1,0 +1,30 @@
+@inject Loc L
+
+@* Prozentfeld (auch negativ, z. B. −10 %), tolerant gegenüber Komma, Punkt und Minuszeichen. *@
+<div class="field">
+    <label for="@_id">@(Label ?? L["scenario.field.percent"])</label>
+    <div class="input-group">
+        <input id="@_id" class="input amount" inputmode="decimal" autocomplete="off" value="@(Value is { } v ? L.Num(v, 1) : "")" placeholder="0"
+               aria-describedby="@((Hint ?? "x").Length > 0 ? _id + "-hint" : null)" @onchange="OnChange" />
+        <span class="input-addon" aria-hidden="true">%</span>
+    </div>
+    @if ((Hint ?? L["scenario.field.percentHint"]) is { Length: > 0 } hint)
+    {
+        <span class="hint" id="@(_id)-hint">@hint</span>
+    }
+</div>
+
+@code {
+    private readonly string _id = "pct-" + Guid.NewGuid().ToString("N")[..6];
+
+    [Parameter] public decimal? Value { get; set; }
+    [Parameter] public EventCallback<decimal?> ValueChanged { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Hint { get; set; }
+
+    private Task OnChange(ChangeEventArgs e)
+    {
+        var text = e.Value?.ToString()?.Replace('−', '-').Replace("%", "").Trim();
+        return ValueChanged.InvokeAsync(Fmt.TryParseAmount(text, out var v) ? v : null);
+    }
+}

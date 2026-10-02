@@ -1,0 +1,30 @@
+@page "/neuigkeiten"
+@layout PublicLayout
+@inject Loc L
+
+<PageTitle>@L["release.title"] · @L["app.name"]</PageTitle>
+
+@* Versionshinweise (B-19). Neue Versionen oben ergänzen: Schlüssel release.vXYZ.* in pages.de/en.json. *@
+<div class="page-narrow" style="padding:1.5rem 0 3rem">
+    <h1>@L["release.title"]</h1>
+    <p class="lead muted">@L["release.lead"] · @L["release.current"]: <strong>@AppInfo.Version</strong></p>
+    @foreach (var (version, items) in Releases)
+    {
+        <section class="card mt-2" aria-labelledby="rel-@version">
+            <div class="card-head">
+                <h2 id="rel-@version">@L[$"release.{version}.title"]</h2>
+                <span class="badge">@L[$"release.{version}.date"]</span>
+            </div>
+            <ul class="release-list">
+                @for (var i = 1; i <= items; i++)
+                {
+                    <li>@L[$"release.{version}.{i}"]</li>
+                }
+            </ul>
+        </section>
+    }
+</div>
+
+@code {
+    private static readonly (string Version, int Items)[] Releases = [("v100", 7)];
+}

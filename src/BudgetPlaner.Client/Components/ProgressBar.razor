@@ -1,0 +1,16 @@
+@* Fortschrittsbalken mit ARIA-Werten (F-022, F-041). *@
+<div class="progress @(Large ? "lg" : "") @Variant" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+     aria-valuenow="@((int)Math.Round(Clamped))" aria-label="@Label">
+    <span style="width:@(Clamped.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%"></span>
+</div>
+
+@code {
+    [Parameter] public decimal Percent { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public bool Large { get; set; }
+
+    /// <summary>„good“, „warn“, „bad“, „done“ oder leer.</summary>
+    [Parameter] public string Variant { get; set; } = "";
+
+    private decimal Clamped => Math.Clamp(Percent, 0, 100);
+}

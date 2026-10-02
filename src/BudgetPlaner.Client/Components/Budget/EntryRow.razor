@@ -1,0 +1,170 @@
+@inherits AppComponent
+
+@* Eine Position = eine Zeile (F-013 mobil), Details per Tippen: Ist-Betrag, Pausieren, Beenden, Löschen. *@
+<div class="entry @(Line.IsInactive ? "paused" : "") @(Line.IsDone ? "done" : "")" data-sortable>
+    <div class="entry-row">
+        @if (SortMode)
+        {
+            <button type="button" class="drag-handle" aria-label="@L.T("budget.dragHandle", Line.Name)" title="@L["budget.dragHint"]"><Icon Name="grip" /></button>
+        }
+        else if (!ReadOnly)
+        {
+            <button type="button" class="done-check @(Line.IsDone ? "checked" : "")" aria-pressed="@(Line.IsDone ? "true" : "false")"
+                    aria-label="@(Line.Kind == EntryKind.Income ? L.T("budget.markReceived", Line.Name) : L.T("budget.markPaid", Line.Name))"
+                    title="@(Line.Kind == EntryKind.Income ? L["budget.received"] : L["budget.paid"])" @onclick="ToggleDone">
+                <span class="box">@if (Line.IsDone) { <Icon Name="check" StrokeWidth="3" /> }</span>
+            </button>
+        }
+        <button type="button" class="entry-main" aria-expanded="@(_open ? "true" : "false")" @onclick="() => _open = !_open">
+            <span class="entry-name">@Line.Name</span>
+            <span class="entry-meta">
+                @if (Line.DebitDay is { } d) { <span>@L.T("budget.onDay", d)</span> }
+                @if (Line.Rhythm != Rhythm.Monthly) { <span class="badge">@L.Of(Line.Rhythm)</span> }
+                @if (Line.Kind == EntryKind.Expense) { <span class="@(Line.IsFixed ? "fix-tag" : "var-tag")">@(Line.IsFixed ? L["budget.fixed"] : L["budget.variable"])</span> }
+                @if (Line.IsPaused) { <span class="badge warn"><Icon Name="pause" />@L["budget.paused"]</span> }
+                else if (Line.IsSkipped) { <span class="badge warn">@L["budget.skipped"]</span> }
+                @if (Line.DebtId is not null) { <span class="badge"><Icon Name="debt" />@(Line.DebtRole == DebtRole.Extra ? L["budget.extraPayment"] : L["budget.loan"])</span> }
+                @if (Line.BufferId is not null) { <span class="badge primary"><Icon Name="piggy" />@L["budget.toBuffer"]</span> }
+            </span>
+        </button>
+        <span class="entry-amount">
+            @if (Line.IsInactive && Line.Actual is null)
+            {
+                <span class="nominal">@L.Money(Line.Nominal)</span>
+            }
+            else
+            {
+                <span class="@(Line.Kind == EntryKind.Income ? "pos" : "")">@L.Money(Line.Effective)</span>
+                @if (Line.Actual is { } a && a != Line.Planned)
+                {
+                    <small>@L.T("budget.plannedShort", L.Money(Line.Planned))</small>
+                }
+            }
+        </span>
+        @if (SortMode)
+        {
+            <button type="button" class="icon-btn sm" aria-label="@L["budget.moveUp"]" @onclick="() => OnMove.InvokeAsync(-1)"><Icon Name="arrow-up" /></button>
+            <button type="button" class="icon-btn sm" aria-label="@L["budget.moveDown"]" @onclick="() => OnMove.InvokeAsync(1)"><Icon Name="arrow-down" /></button>
+        }
+        else
+        {
+            <button type="button" class="icon-btn sm" aria-label="@L["action.details"]" @onclick="() => _open = !_open"><Icon Name="@(_open ? "chevron-up" : "chevron-down")" /></button>
+        }
+    </div>
+    @if (_open && !SortMode)
+    {
+        <div class="entry-details">
+            <dl class="detail-grid">
+                <div><dt>@L["entry.category"]</dt><dd>@L.Cat(Line.CategoryId)</dd></div>
+                <div><dt>@L["entry.rhythm"] <InfoTip Term="rhythmus" /></dt><dd>@L.Of(Line.Rhythm)</dd></div>
+                <div><dt>@L["entry.debitDay"] <InfoTip Term="abbuchungstag" /></dt><dd>@(Line.DebitDay is { } dd ? L.T("budget.dayOfMonth", dd) : L["entry.noDay"]) · @L.DateShort(Line.DueDate)</dd></div>
+                @if (Entry is not null)
+                {
+                    <div><dt>@L["entry.period"]</dt><dd>@L.Period(Entry.StartPeriod, true) – @(Entry.EndPeriod is { } e ? L.Period(e, true) : L["entry.open"])</dd></div>
+                }
+                <div><dt>@L["entry.planned"]</dt><dd class="num">@L.Money(Line.Planned)</dd></div>
+                <div><dt>@L["entry.actual"] <InfoTip Term="sollist" /></dt><dd class="num">@(Line.Actual is { } act ? L.Money(act) : L["entry.actualEqualsPlan"])</dd></div>
+            </dl>
+            @if (!string.IsNullOrWhiteSpace(Entry?.Note))
+            {
+                <p class="small muted mb-0">@Entry!.Note</p>
+            }
+            @if (!ReadOnly && Entry is not null)
+            {
+                <div class="row" style="align-items:flex-end">
+                    <div style="max-width:14rem">
+                        <AmountField Label="@L["entry.actualInput"]" Value="_actual" ValueChanged="v => _actual = v" Placeholder="@L.AmountInput(Line.Planned)" />
+                    </div>
+                    <button class="btn btn-sm" @onclick="SaveActual"><Icon Name="check" />@L["entry.saveActual"]</button>
+                    @if (Line.Actual is not null)
+                    {
+                        <button class="btn btn-sm btn-ghost" @onclick="ClearActual">@L["entry.resetActual"]</button>
+                    }
+                </div>
+                <div class="row">
+                    <button class="btn btn-sm" @onclick="() => OnEdit.InvokeAsync(Entry)"><Icon Name="edit" />@L["action.edit"]</button>
+                    @if (Line.IsInactive)
+                    {
+                        <button class="btn btn-sm" @onclick="Resume"><Icon Name="play" />@L["budget.resume"]</button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-sm" @onclick="SkipMonth"><Icon Name="pause" />@L["budget.skipThisMonth"]</button>
+                        <button class="btn btn-sm" @onclick="PauseFrom"><Icon Name="pause" />@L["budget.pauseFrom"]</button>
+                    }
+                    @if (Period > Entry.StartPeriod)
+                    {
+                        <button class="btn btn-sm" @onclick="EndFrom"><Icon Name="flag" />@L.T("budget.endFrom", L.Period(Period, true))</button>
+                    }
+                    <button class="btn btn-sm btn-ghost" style="color:var(--bad)" @onclick="Delete"><Icon Name="trash" />@L["action.delete"]</button>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private bool _open;
+    private decimal? _actual;
+
+    [Parameter, EditorRequired] public EntryLine Line { get; set; } = default!;
+    [Parameter] public BudgetEntry? Entry { get; set; }
+    [Parameter] public Period Period { get; set; }
+    [Parameter] public bool ReadOnly { get; set; }
+    [Parameter] public bool SortMode { get; set; }
+    [Parameter] public EventCallback<BudgetEntry> OnEdit { get; set; }
+    [Parameter] public EventCallback<int> OnMove { get; set; }
+
+    protected override void OnParametersSet() => _actual = Line.Actual;
+
+    private async Task ToggleDone()
+    {
+        if (Entry is null) return;
+        await Act.SetDoneAsync(Entry, Period, !Line.IsDone);
+    }
+
+    private async Task SaveActual()
+    {
+        if (Entry is null) return;
+        await Act.SetActualAsync(Entry, Period, _actual);
+        Toasts.Success(L["entry.actualSaved"]);
+    }
+
+    private async Task ClearActual()
+    {
+        if (Entry is null) return;
+        _actual = null;
+        await Act.SetActualAsync(Entry, Period, null, markDone: false);
+    }
+
+    private async Task SkipMonth()
+    {
+        if (Entry is not null) await Act.PauseAsync(Entry, Period, onlyThisMonth: true);
+    }
+
+    private async Task PauseFrom()
+    {
+        if (Entry is null) return;
+        if (await Confirm.AskAsync(L["budget.pauseTitle"], L.T("budget.pauseText", Entry.Name, L.Period(Period)), L["budget.pauseFrom"]))
+            await Act.PauseAsync(Entry, Period, onlyThisMonth: false);
+    }
+
+    private async Task Resume()
+    {
+        if (Entry is not null) await Act.ResumeAsync(Entry, Period);
+    }
+
+    private async Task EndFrom()
+    {
+        if (Entry is null) return;
+        if (await Confirm.AskAsync(L["budget.endTitle"], L.T("budget.endText", Entry.Name, L.Period(Period.Previous)), L["budget.endConfirm"]))
+            await Act.EndEntryAsync(Entry, Period);
+    }
+
+    private async Task Delete()
+    {
+        if (Entry is null) return;
+        if (await Confirm.AskAsync(L["budget.deleteTitle"], L.T("budget.deleteText", Entry.Name), L["action.delete"], danger: true))
+            await Act.DeleteEntryAsync(Entry);
+    }
+}

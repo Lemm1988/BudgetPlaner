@@ -1,0 +1,126 @@
+@page "/polster"
+@inherits AppComponent
+@using BudgetPlaner.Client.Components.Buffers
+
+<PageTitle>@L["nav.buffers"] · @L["app.name"]</PageTitle>
+
+<KpiBar />
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h1>@L["nav.buffers"]</h1>
+            <p class="lead">@L["buffers.lead"]</p>
+        </div>
+        <div class="page-actions">
+            <button class="btn btn-primary" @onclick="() => Open(false)"><Icon Name="plus" />@L["buffers.new"]</button>
+        </div>
+    </div>
+
+    @if (!Store.IsLoaded)
+    {
+        <div class="card"><div class="skeleton" style="height:8rem"></div></div>
+    }
+    else if (Ix.Buffers.Count == 0)
+    {
+        <div class="card">
+            <EmptyState Icon="piggy" Title="@L["buffers.emptyTitle"]" Text="@L["buffers.emptyText"]">
+                <div class="row" style="justify-content:center">
+                    <button class="btn btn-primary" @onclick="() => Open(true)"><Icon Name="shield" />@L["buffers.createEmergency"]</button>
+                    <button class="btn" @onclick="() => Open(false)"><Icon Name="plus" />@L["buffers.new"]</button>
+                </div>
+            </EmptyState>
+        </div>
+    }
+    else
+    {
+        var all = Engine.Buffers.All().OrderBy(s => s.Buffer.SortIndex).ThenBy(s => s.Buffer.Name).ToList();
+        var emergency = all.FirstOrDefault(s => s.Buffer.IsEmergencyFund);
+        var expenses = Engine.Totals(Current).Expenses;
+
+        <section class="card mb-2" aria-labelledby="buffer-summary">
+            <div class="card-head">
+                <h2 id="buffer-summary">@L["buffers.summary"]</h2>
+                <AmpelBadge Item="Engine.Ampel.Buffers(Current)" Label="@L["ampel.buffers"]" ShowLabel="true" AlignRight="true" />
+            </div>
+            <div class="grid grid-3" style="gap:.75rem">
+                <div class="stat">
+                    <span class="stat-label">@L["buffer.total"] <InfoTip Term="polster" /></span>
+                    <span class="stat-value">@L.Money(Engine.Buffers.TotalBalance)</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">@L["buffers.plannedMonthly"] <InfoTip Term="sparplan" /></span>
+                    <span class="stat-value sm">@L.Money(all.Sum(s => s.PlannedThisPeriod))</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">@L["buffers.emergencyCoverage"] <InfoTip Term="notgroschen" /></span>
+                    @if (emergency is not null && expenses > 0)
+                    {
+                        <span class="stat-value sm">@L.T("buffers.coverageMonths", L.Num(emergency.Balance / expenses, 1))</span>
+                    }
+                    else
+                    {
+                        <span class="stat-value sm muted">@L["buffers.noEmergency"]</span>
+                    }
+                    @if (Suggestion > 0)
+                    {
+                        <span class="stat-hint">@L.T("buffers.emergencySuggestion", L.Money(Suggestion, decimals: 0), L.Num(Engine.Rules.EmergencyFundIncomeMultiplier, 0))</span>
+                    }
+                </div>
+            </div>
+        </section>
+
+        <div class="grid grid-3">
+            @foreach (var s in all)
+            {
+                <a class="card link" href="/polster/@s.Buffer.Id">
+                    <div class="card-head">
+                        <h3 class="truncate"><CategoryIcon Color="@s.Buffer.Color" IconName="@(s.Buffer.Icon ?? "piggy")" />@s.Buffer.Name</h3>
+                        @if (s.Buffer.IsEmergencyFund)
+                        {
+                            <span class="badge primary">@L["buffers.emergency"]</span>
+                        }
+                    </div>
+                    <div class="stat">
+                        <span class="stat-value sm">@L.Money(s.Balance)</span>
+                        <span class="stat-hint">@(s.Target is { } t ? L.T("buffers.ofTarget", L.Money(t)) : L["buffers.noTarget"])</span>
+                    </div>
+                    @if (s.ProgressPercent is { } pct)
+                    {
+                        <div class="mt-1"><ProgressBar Percent="pct" Label="@L["buffer.progress"]" Variant="@(s.GoalReached ? "done" : "good")" /></div>
+                    }
+                    <div class="row-between small muted mt-1">
+                        <span>@(s.PlannedThisPeriod > 0 ? L.T("buffers.perMonth", L.Money(s.PlannedThisPeriod)) : L["buffers.noPlan"])</span>
+                        <span class="@(s.GoalReached ? "pos" : "")">@ForecastText(s)</span>
+                    </div>
+                </a>
+            }
+        </div>
+    }
+</div>
+
+@if (_editing)
+{
+    <BufferDialog Emergency="_emergency" OnClose="() => _editing = false" OnSaved="ShowCreated" />
+}
+
+@code {
+    private bool _editing, _emergency;
+
+    private decimal Suggestion => Math.Round(Engine.Totals(Current).Income * Engine.Rules.EmergencyFundIncomeMultiplier / 100m, MidpointRounding.AwayFromZero) * 100m;
+
+    private void ShowCreated(BufferEntry b) => Nav.NavigateTo("/polster/" + b.Id);
+
+    private void Open(bool emergency)
+    {
+        _emergency = emergency;
+        _editing = true;
+    }
+
+    private string ForecastText(BufferStatus s)
+    {
+        if (s.Target is null) return "";
+        if (s.GoalReached) return L["buffers.goalReached"];
+        return s.Forecast.Possible && s.Forecast.GoalPeriod is { } g ? L.T("buffers.goalBy", L.Period(g)) : L["buffers.goalUnknown"];
+    }
+}

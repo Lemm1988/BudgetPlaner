@@ -1,0 +1,149 @@
+@inherits AppComponent
+
+@* Kategorien verwalten (F-012): Standardkategorien nach 50/30/20, eigene (Unter-)Kategorien, Löschen hängt auf „Sonstiges“ um. *@
+<Modal Title="@L["categories.title"]" OnClose="OnClose" Wide="true">
+    <ChildContent>
+        <p class="muted">@L["categories.intro"]</p>
+        @foreach (var root in Roots)
+        {
+            <div class="cat-block">
+                <div class="cat-head">
+                    <CategoryIcon Color="@root.Color" IconName="@root.Icon" />
+                    @if (_editId == root.Id)
+                    {
+                        <input class="input" style="max-width:16rem" @bind="_editName" @bind:event="oninput" aria-label="@L["categories.name"]" @onkeydown="e => EditKey(e, root)" />
+                        <button class="btn btn-sm btn-primary" @onclick="() => Rename(root)">@L["action.save"]</button>
+                    }
+                    else
+                    {
+                        <h3>@L.Cat(root)</h3>
+                        @if (root.Group != BudgetGroup.None)
+                        {
+                            <span class="badge">@L.Of(root.Group)</span>
+                        }
+                        <button class="icon-btn sm" aria-label="@L.T("categories.rename", L.Cat(root))" @onclick="() => StartEdit(root)"><Icon Name="edit" /></button>
+                    }
+                </div>
+                <ul class="list" style="padding:0 .75rem">
+                    @foreach (var (child, i) in Children(root).Select((c, i) => (c, i)))
+                    {
+                        <li class="list-row">
+                            <span class="chip"><span class="dot" style="background:@child.Color"></span></span>
+                            @if (_editId == child.Id)
+                            {
+                                <input class="input" @bind="_editName" @bind:event="oninput" aria-label="@L["categories.name"]" @onkeydown="e => EditKey(e, child)" />
+                                <button class="btn btn-sm btn-primary" @onclick="() => Rename(child)">@L["action.save"]</button>
+                            }
+                            else
+                            {
+                                <span class="grow">@L.Cat(child) <span class="small muted">· @L.T("categories.entries", Act.EntriesInCategory(child.Id))</span></span>
+                                <button class="icon-btn sm" aria-label="@L["budget.moveUp"]" disabled="@(i == 0)" @onclick="() => Move(root, child, -1)"><Icon Name="arrow-up" /></button>
+                                <button class="icon-btn sm" aria-label="@L["budget.moveDown"]" disabled="@(i == Children(root).Count - 1)" @onclick="() => Move(root, child, 1)"><Icon Name="arrow-down" /></button>
+                                <button class="icon-btn sm" aria-label="@L.T("categories.rename", L.Cat(child))" @onclick="() => StartEdit(child)"><Icon Name="edit" /></button>
+                                @if (!child.IsSystem)
+                                {
+                                    <button class="icon-btn sm" aria-label="@L.T("categories.delete", L.Cat(child))" @onclick="() => DeleteAsync(child)"><Icon Name="trash" /></button>
+                                }
+                            }
+                        </li>
+                    }
+                </ul>
+                <div style="padding:.5rem .75rem .75rem" class="row">
+                    <input class="input" style="max-width:18rem" placeholder="@L["categories.newPlaceholder"]" @bind="_newNames[root.Id]" @bind:event="oninput"
+                           aria-label="@L.T("categories.addTo", L.Cat(root))" @onkeydown="e => AddKey(e, root)" />
+                    <button class="btn btn-sm" @onclick="() => AddAsync(root)"><Icon Name="plus" />@L["categories.add"]</button>
+                </div>
+            </div>
+        }
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-primary" @onclick="OnClose">@L["action.done"]</button>
+    </Footer>
+</Modal>
+
+@code {
+    private Guid? _editId;
+    private string _editName = "";
+    private readonly Dictionary<Guid, string> _newNames = [];
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private IEnumerable<Category> Roots => Ix.Categories.Where(c => c.ParentId is null).OrderBy(c => c.Type).ThenBy(c => c.SortIndex);
+    private List<Category> Children(Category root) => Ix.Categories.Where(c => c.ParentId == root.Id).OrderBy(c => c.SortIndex).ToList();
+
+    protected override void OnParametersSet()
+    {
+        foreach (var r in Roots) _newNames.TryAdd(r.Id, "");
+    }
+
+    private void StartEdit(Category c)
+    {
+        _editId = c.Id;
+        _editName = L.Cat(c);
+    }
+
+    private async Task Rename(Category c)
+    {
+        var name = _editName.Trim();
+        if (name.Length == 0) return;
+        var copy = c.CloneAs<Category>();
+        copy.Name = name == (c.DefaultKey is { } k ? L[$"cat.{k}"] : null) ? null : name;
+        await Act.SaveCategoryAsync(copy);
+        _editId = null;
+    }
+
+    private async Task EditKey(KeyboardEventArgs e, Category c)
+    {
+        if (e.Key == "Enter") await Rename(c);
+        else if (e.Key == "Escape") _editId = null;
+    }
+
+    private async Task AddKey(KeyboardEventArgs e, Category root)
+    {
+        if (e.Key == "Enter") await AddAsync(root);
+    }
+
+    private async Task AddAsync(Category root)
+    {
+        var name = _newNames.GetValueOrDefault(root.Id)?.Trim();
+        if (string.IsNullOrEmpty(name)) return;
+        var children = Children(root);
+        await Act.SaveCategoryAsync(new Category
+        {
+            Name = name, Type = root.Type, Group = root.Group, ParentId = root.Id, Color = root.Color, Icon = root.Icon,
+            SortIndex = (children.Count == 0 ? root.SortIndex : children.Max(c => c.SortIndex)) + 1,
+        });
+        _newNames[root.Id] = "";
+        Toasts.Success(L.T("categories.added", name));
+    }
+
+    private async Task Move(Category root, Category child, int delta)
+    {
+        var list = Children(root);
+        var i = list.FindIndex(c => c.Id == child.Id);
+        var j = i + delta;
+        if (j < 0 || j >= list.Count) return;
+        (list[i], list[j]) = (list[j], list[i]);
+        var changes = new List<Change>();
+        for (var k = 0; k < list.Count; k++)
+        {
+            var target = root.SortIndex + 1 + k;
+            if (list[k].SortIndex == target) continue;
+            var copy = list[k].CloneAs<Category>();
+            copy.SortIndex = target;
+            changes.Add(Change.Save(copy));
+        }
+        await Store.MutateAsync(changes);
+    }
+
+    private async Task DeleteAsync(Category c)
+    {
+        var count = Act.EntriesInCategory(c.Id);
+        var message = count > 0 ? L.T("categories.deleteWithEntries", L.Cat(c), count, L["cat.other"]) : L.T("categories.deleteEmpty", L.Cat(c));
+        if (await Confirm.AskAsync(L["categories.deleteTitle"], message, L["action.delete"], danger: true))
+        {
+            await Act.DeleteCategoryAsync(c);
+            Toasts.Success(L.T("categories.deleted", L.Cat(c)));
+        }
+    }
+}

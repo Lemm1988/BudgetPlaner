@@ -1,0 +1,170 @@
+@inherits AppComponent
+
+@* Polster anlegen/bearbeiten (F-040) mit Anfangsbestand und Sparplan als Budget-Zuweisung; Notgroschen-Vorschlag (B-16). *@
+<Modal Title="@(_isNew ? L["buffer.newTitle"] : L["buffer.editTitle"])" OnClose="OnClose" Wide="true">
+    <ChildContent>
+        <form id="buffer-form" @onsubmit="SaveAsync" @onsubmit:preventDefault="true" class="stack">
+            <div class="form-grid">
+                <div class="field full">
+                    <label for="buf-name">@L["buffer.name"] <span aria-hidden="true">*</span></label>
+                    <input id="buf-name" class="input" @bind="_b.Name" @bind:event="oninput" required maxlength="80" placeholder="@L["buffer.namePlaceholder"]"
+                           aria-invalid="@(_nameError ? "true" : "false")" />
+                    @if (_nameError) { <span class="error" role="alert">@L["err.buffer.name"]</span> }
+                </div>
+                <div class="field full">
+                    <label class="check"><input type="checkbox" checked="@_b.IsEmergencyFund" @onchange="e => SetEmergency(e.Value is true)" />@L["buffer.isEmergency"] <InfoTip Term="notgroschen" /></label>
+                </div>
+                <div>
+                    <AmountField Label="@L["buffer.targetAmount"]" Value="_target" ValueChanged="v => _target = v is > 0 ? v : null" />
+                    @if (_b.IsEmergencyFund && Suggestion > 0 && _target != Suggestion)
+                    {
+                        <button type="button" class="btn btn-ghost btn-sm" @onclick="() => _target = Suggestion"><Icon Name="lightbulb" />@L.T("buffer.useSuggestion", L.Money(Suggestion, decimals: 0))</button>
+                    }
+                </div>
+                <div class="field">
+                    <label for="buf-date">@L["buffer.targetDateLabel"]</label>
+                    <input id="buf-date" class="input" type="date" value="@(_b.TargetDate?.ToString("yyyy-MM-dd") ?? "")"
+                           @onchange="e => _b.TargetDate = DateOnly.TryParse(e.Value?.ToString(), out var d) ? d : null" />
+                </div>
+                @if (_isNew)
+                {
+                    <AmountField Label="@L["buffer.openingBalance"]" Value="_opening" ValueChanged="v => _opening = v" Hint="@L["buffer.openingHint"]" />
+                }
+            </div>
+
+            <fieldset class="card soft flat stack-sm">
+                <legend>@L["buffer.plan"] <InfoTip Term="sparplan" /></legend>
+                <div class="form-grid">
+                    <AmountField Label="@L["buffer.monthlyPlan"]" Value="_plan" ValueChanged="v => _plan = v" Hint="@L["buffer.monthlyPlanHint"]" />
+                    <div class="field">
+                        <label for="buf-day">@L["buffer.planDay"]</label>
+                        <select id="buf-day" class="select" @bind="DayValue">
+                            <option value="">@L["entry.noDay"]</option>
+                            @for (var d = 1; d <= 31; d++)
+                            {
+                                <option value="@d">@L.T("budget.dayOfMonth", d)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="buf-from">@L["buffer.planFrom"]</label>
+                        <input id="buf-from" class="input" type="month" value="@_from" @onchange="e => { if (Period.TryParse(e.Value?.ToString(), out var p)) _from = p; }" />
+                    </div>
+                </div>
+            </fieldset>
+
+            <div>
+                <label class="check"><input type="checkbox" @bind="_b.SeparateAccount" />@L["buffer.separateAccount"]</label>
+                <p class="small muted mb-0">@L["buffer.separateHint"]</p>
+            </div>
+
+            <ColorIconPicker Color="@_b.Color" ColorChanged="c => _b.Color = c" IconName="@_b.Icon" IconNameChanged="i => _b.Icon = i" />
+
+            <div class="field">
+                <label for="buf-note">@L["buffer.note"]</label>
+                <textarea id="buf-note" class="textarea" @bind="_b.Note" maxlength="500"></textarea>
+            </div>
+
+            @if (_error is not null)
+            {
+                <p class="form-error" role="alert">@_error</p>
+            }
+        </form>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn" @onclick="OnClose">@L["action.cancel"]</button>
+        <button type="submit" form="buffer-form" class="btn btn-primary" disabled="@_busy"><Icon Name="check" />@L["action.save"]</button>
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter] public BufferEntry? Buffer { get; set; }
+    [Parameter] public bool Emergency { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<BufferEntry> OnSaved { get; set; }
+
+    private BufferEntry _b = new();
+    private bool _isNew, _busy, _nameError;
+    private decimal? _target, _opening, _plan;
+    private decimal _originalPlan;
+    private int? _day;
+    private Period _from;
+    private string? _error;
+
+    /// <summary>B-16: Notgroschen = Faktor (Standard 3) × monatliches Nettoeinkommen (laufender Monat), auf 100 gerundet.</summary>
+    private decimal Suggestion => Math.Round(Engine.Totals(Current).Income * Engine.Rules.EmergencyFundIncomeMultiplier / 100m, MidpointRounding.AwayFromZero) * 100m;
+
+    // Nur beim Öffnen initialisieren: OnParametersSet liefe bei jedem Neu-Rendern der Seite (z. B. Sync) und würde Eingaben verwerfen.
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        _isNew = Buffer is null || Store.Find<BufferEntry>(Buffer.Id) is null;
+        _b = Buffer?.CloneAs<BufferEntry>() ?? new BufferEntry
+        {
+            SeparateAccount = true,
+            SortIndex = Ix.Buffers.Count == 0 ? 0 : Ix.Buffers.Max(b => b.SortIndex) + 1,
+            Color = ColorIconPicker.Colors[Ix.Buffers.Count % ColorIconPicker.Colors.Length],
+            Icon = "piggy",
+        };
+        if (_isNew && Emergency)
+        {
+            _b.Name = L["buffers.emergency"];
+            _b.IsEmergencyFund = true;
+            _b.Icon = "shield";
+            if (Suggestion > 0) _b.TargetAmount = Suggestion;
+        }
+        _target = _b.TargetAmount;
+        _from = Current;
+        var plan = _isNew ? null : (Ix.EntriesByBuffer.GetValueOrDefault(_b.Id) ?? []).Where(e => e.EndPeriod is null || e.EndPeriod >= Current).OrderBy(e => e.StartPeriod).FirstOrDefault();
+        _originalPlan = plan is null ? 0 : Act.NominalAmount(plan, Period.Max(Current, plan.StartPeriod));
+        _plan = plan is null ? null : _originalPlan;
+        _day = plan?.DebitDay;
+    }
+
+    private string DayValue
+    {
+        get => _day?.ToString() ?? "";
+        set => _day = int.TryParse(value, out var d) ? d : null;
+    }
+
+    private void SetEmergency(bool value)
+    {
+        _b.IsEmergencyFund = value;
+        if (value && _target is null && Suggestion > 0) _target = Suggestion;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        _nameError = string.IsNullOrWhiteSpace(_b.Name);
+        if (_nameError) return;
+        _busy = true;
+        try
+        {
+            _b.Name = _b.Name.Trim();
+            _b.Note = string.IsNullOrWhiteSpace(_b.Note) ? null : _b.Note.Trim();
+            _b.TargetAmount = _target;
+            // Nur ein Notgroschen je Haushalt: andere Markierungen aufheben.
+            if (_b.IsEmergencyFund)
+                foreach (var other in Ix.Buffers.Where(x => x.Id != _b.Id && x.IsEmergencyFund).ToList())
+                {
+                    var copy = other.CloneAs<BufferEntry>();
+                    copy.IsEmergencyFund = false;
+                    await Store.SaveAsync(copy);
+                }
+            var planChanged = _isNew ? _plan is > 0 : (_plan ?? 0) != _originalPlan || PlanDayChanged();
+            await Act.SaveBufferAsync(_b, _isNew ? _opening : null, planChanged ? _plan ?? 0 : null, _day, _from);
+            Toasts.Success(_isNew ? L.T("buffer.created", _b.Name) : L["buffer.saved"]);
+            await OnSaved.InvokeAsync(_b);
+            await OnClose.InvokeAsync();
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+
+    private bool PlanDayChanged()
+    {
+        var plan = (Ix.EntriesByBuffer.GetValueOrDefault(_b.Id) ?? []).FirstOrDefault(e => e.EndPeriod is null || e.EndPeriod >= Current);
+        return plan is not null && plan.DebitDay != _day;
+    }
+}

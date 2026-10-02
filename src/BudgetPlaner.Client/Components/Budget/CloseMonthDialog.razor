@@ -1,0 +1,111 @@
+@inherits AppComponent
+
+@* Monatsabschluss (I-01): offene Positionen prüfen, Rest übertragen oder einem Polster zuweisen, optional Kontostand erfassen. *@
+<Modal Title="@L.T("close.title", L.Period(Period))" OnClose="OnClose" Wide="true">
+    <ChildContent>
+        <p class="muted">@L["close.intro"]</p>
+        <div class="grid grid-4" style="gap:.75rem">
+            <div class="stat"><span class="stat-label">@L["kpi.income"]</span><span class="stat-value sm pos">@L.Money(Month.Income)</span></div>
+            <div class="stat"><span class="stat-label">@L["kpi.expenses"]</span><span class="stat-value sm">@L.Money(Month.Expenses)</span></div>
+            <div class="stat"><span class="stat-label">@L["kpi.allocations"]</span><span class="stat-value sm">@L.Money(Month.Allocations)</span></div>
+            <div class="stat"><span class="stat-label">@L["kpi.unassigned"]</span><span class="stat-value sm @(Month.Unverplant < 0 ? "neg" : "")">@L.Money(Month.Unverplant)</span></div>
+        </div>
+
+        <h3 class="mt-2">@L.T("close.openItems", Open.Count)</h3>
+        @if (Open.Count == 0)
+        {
+            <p class="small muted">@L["close.allDone"]</p>
+        }
+        else
+        {
+            <p class="small muted">@L["close.openHint"]</p>
+            <ul class="list">
+                @foreach (var line in Open.Take(12))
+                {
+                    var entry = Ix.EntryById.GetValueOrDefault(line.EntryId);
+                    <li class="list-row">
+                        <span class="grow truncate">@line.Name</span>
+                        <span class="num">@L.Money(line.Effective)</span>
+                        @if (entry is not null)
+                        {
+                            <button class="btn btn-sm" @onclick="() => Act.SetDoneAsync(entry, Period, true)"><Icon Name="check" />@(line.Kind == EntryKind.Income ? L["budget.received"] : L["budget.paid"])</button>
+                        }
+                    </li>
+                }
+            </ul>
+            @if (Open.Count > 12)
+            {
+                <p class="small muted">@L.T("close.more", Open.Count - 12)</p>
+            }
+            <button class="btn btn-sm" @onclick="MarkAllDone"><Icon Name="check-circle" />@L["close.markAllDone"]</button>
+        }
+
+        @if (Month.Unverplant != 0)
+        {
+            <fieldset class="mt-2">
+                <legend>@(Month.Unverplant > 0 ? L.T("close.leftover", L.Money(Month.Unverplant)) : L.T("close.deficit", L.Money(-Month.Unverplant)))</legend>
+                <label class="check"><input type="radio" name="leftover" checked="@(_action == "carry")" @onchange="@(() => _action = "carry")" />@L["close.carry"]</label>
+                @if (Ix.Buffers.Count > 0)
+                {
+                    <label class="check"><input type="radio" name="leftover" checked="@(_action == "buffer")" @onchange="@(() => _action = "buffer")" />@(Month.Unverplant > 0 ? L["close.toBuffer"] : L["close.fromBuffer"])</label>
+                    @if (_action == "buffer")
+                    {
+                        <select class="select" style="max-width:22rem" @bind="BufferValue" aria-label="@L["entry.buffer"]">
+                            @foreach (var b in Ix.Buffers)
+                            {
+                                <option value="@b.Id">@b.Name (@L.Money(Engine.Buffers.Status(b.Id).Balance))</option>
+                            }
+                        </select>
+                    }
+                }
+                <label class="check"><input type="radio" name="leftover" checked="@(_action == "none")" @onchange="@(() => _action = "none")" />@L["close.none"]</label>
+            </fieldset>
+        }
+
+        <div class="mt-2" style="max-width:22rem">
+            <AmountField Label="@L.T("close.balance", L.Date(Ix.Calendar.End(Period)))" Value="_balance" ValueChanged="v => _balance = v" AllowNegative="true"
+                         Hint="@L["close.balanceHint"]" />
+        </div>
+    </ChildContent>
+    <Footer>
+        <button class="btn" @onclick="OnClose">@L["action.cancel"]</button>
+        <button class="btn btn-primary" @onclick="CloseAsync" disabled="@_busy"><Icon Name="check-circle" />@L["close.confirm"]</button>
+    </Footer>
+</Modal>
+
+@code {
+    private string _action = "carry";
+    private Guid? _bufferId;
+    private decimal? _balance;
+    private bool _busy;
+
+    [Parameter] public Period Period { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private MonthResult Month => Engine.Month(Period);
+    private List<EntryLine> Open => Month.Lines.Where(l => !l.IsDone && !l.IsInactive && l.Effective > 0).ToList();
+
+    private string BufferValue
+    {
+        get => (_bufferId ?? Ix.Buffers.FirstOrDefault()?.Id)?.ToString() ?? "";
+        set => _bufferId = Guid.TryParse(value, out var g) ? g : null;
+    }
+
+    private async Task MarkAllDone()
+    {
+        foreach (var line in Open.ToList())
+            if (Ix.EntryById.GetValueOrDefault(line.EntryId) is { } e) await Act.SetDoneAsync(e, Period, true);
+    }
+
+    private async Task CloseAsync()
+    {
+        _busy = true;
+        try
+        {
+            var buffer = _action == "buffer" ? _bufferId ?? Ix.Buffers.FirstOrDefault()?.Id : null;
+            await Act.CloseMonthAsync(Period, _action, buffer, _balance);
+            await OnClose.InvokeAsync();
+        }
+        finally { _busy = false; }
+    }
+}

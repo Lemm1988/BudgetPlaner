@@ -1,0 +1,239 @@
+@page "/prognosen"
+@inherits AppComponent
+@inject ScenarioState Scenario
+@using BudgetPlaner.Client.Components.Charts
+@using BudgetPlaner.Client.Components.Forecasts
+
+<PageTitle>@L["nav.forecasts"] · @L["app.name"]</PageTitle>
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h1>@L["nav.forecasts"]</h1>
+            <p class="lead">@L["forecast.lead"]</p>
+        </div>
+        <div class="page-actions">
+            <a class="btn" href="/prognosen#szenario"><Icon Name="sparkles" />@L["scenario.title"]</a>
+        </div>
+    </div>
+
+    @if (!Store.IsLoaded)
+    {
+        <div class="card"><div class="skeleton" style="height:14rem"></div></div>
+    }
+    else
+    {
+        @if (Scenario.IsActive)
+        {
+            <div class="notice info mb-2"><Icon Name="sparkles" /><div style="flex:1">@L["scenario.badge"] – @L["scenario.lead"]</div><a class="btn btn-sm" href="/prognosen#szenario">@L["action.open"]</a></div>
+        }
+
+        var forecast = Engine.Forecasts.Balance(_months);
+        <section class="card mb-2" aria-labelledby="fc-balance">
+            <div class="card-head">
+                <h2 id="fc-balance">@L["forecast.balance"] <InfoTip Term="prognose" /></h2>
+                <div class="segmented" role="group" aria-label="@L["stats.range"]">
+                    @foreach (var m in new[] { 3, 6, 12 })
+                    {
+                        <button type="button" aria-pressed="@(_months == m ? "true" : "false")" @onclick="() => _months = m">@L.T(Ui.IsMobile ? "stats.monthsShort" : "forecast.months", m)</button>
+                    }
+                </div>
+            </div>
+            <p class="small muted">@L["forecast.balanceLead"]</p>
+            @if (!forecast.HasAnchor)
+            {
+                <div class="notice info mb-1"><Icon Name="bank" /><div style="flex:1">@L["cashflow.noAnchorShort"]</div><a class="btn btn-sm" href="/cashflow">@L["cashflow.checkpoint"]</a></div>
+            }
+            @{
+                var chart = DailyChart(forecast);
+            }
+            <LineChart Title="@L["forecast.balance"]" Labels="chart.Labels" TooltipLabels="chart.Tooltips" Series="chart.Series" Format="v => L.Money(v)"
+                       AxisFormat="v => L.MoneyCompact(v)" MarkIndex="chart.Today" MarkLabel="@L["chart.today"]" Height="240" />
+            <div class="table-wrap mt-2">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th scope="col">@L["col.period"]</th>
+                            <th scope="col" class="num">@L["forecast.col.start"]</th>
+                            <th scope="col" class="num">@L["forecast.col.in"]</th>
+                            <th scope="col" class="num">@L["forecast.col.out"]</th>
+                            <th scope="col" class="num">@L["forecast.col.end"]</th>
+                            <th scope="col" class="num">@L["forecast.col.lowest"]</th>
+                            <th scope="col"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in forecast.Months)
+                        {
+                            <tr>
+                                <th scope="row"><button class="link-btn" @onclick="() => OpenCashflow(p.Period)">@L.Period(p.Period)</button></th>
+                                <td class="num">@L.Money(p.StartBalance)</td>
+                                <td class="num pos">@L.Money(p.Inflows, plus: true)</td>
+                                <td class="num">@L.Money(p.Outflows)</td>
+                                <td class="num @(p.EndBalance < 0 ? "neg" : "")"><strong>@L.Money(p.EndBalance)</strong></td>
+                                <td class="num @(p.MinBalance < 0 ? "neg" : "")">@L.Money(p.MinBalance) <span class="small muted">@L.DateShort(p.MinBalanceDate)</span></td>
+                                <td>
+                                    @if (p.IsBottleneck)
+                                    {
+                                        <span class="badge bad"><Icon Name="alert" />@L["forecast.bottleneck"]</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge good"><Icon Name="check" />@L["forecast.ok"]</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <div class="grid grid-3 start mb-2">
+            <section class="card" aria-labelledby="fc-warn">
+                <div class="card-head"><h2 id="fc-warn">@L["forecast.warnings"]</h2></div>
+                @if (Engine.Forecasts.Warnings().Count == 0)
+                {
+                    <p class="pos mb-0"><Icon Name="check-circle" /> @L["forecast.noWarnings"]</p>
+                }
+                else
+                {
+                    <WarningList Max="20" />
+                }
+            </section>
+
+            <section class="card" aria-labelledby="fc-debt">
+                <div class="card-head"><h2 id="fc-debt">@L["forecast.debtFree"] <InfoTip Term="tilgung" /></h2></div>
+                @{
+                    var debtFree = Engine.Forecasts.DebtFree();
+                    var open = Engine.Debts.All().Where(s => !s.IsPaidOff).ToList();
+                }
+                @if (open.Count == 0)
+                {
+                    <p class="muted mb-0">@L["forecast.noDebts"]</p>
+                }
+                else
+                {
+                    <div class="stat mb-1">
+                        <span class="stat-value sm @(debtFree.Possible ? "" : "neg")">@(debtFree.Possible && debtFree.PayoffPeriod is { } pp ? L.T("forecast.debtFreeAt", L.Period(pp)) : L["forecast.debtNotPossible"])</span>
+                        @if (debtFree.Possible)
+                        {
+                            <span class="stat-hint">@L.T("forecast.totalInterest", L.Money(debtFree.TotalInterest))</span>
+                        }
+                    </div>
+                    <ul class="list">
+                        @foreach (var s in open)
+                        {
+                            var f = Engine.Debts.Forecast(s.Debt.Id);
+                            <li class="list-row">
+                                <div class="grow">
+                                    <a href="/schulden/@s.Debt.Id">@s.Debt.Name</a>
+                                    <div class="small muted">@L["debt.balance"] @L.Money(s.Balance)</div>
+                                </div>
+                                <span class="small @(f.Possible ? "" : "neg")">@(f.Possible && f.PayoffPeriod is { } fp ? L.Period(fp) : L["debt.payoffUnknown"])</span>
+                            </li>
+                        }
+                    </ul>
+                    <a class="btn btn-sm mt-1" href="/schulden#strategien"><Icon Name="scale" />@L["debts.compare"]</a>
+                }
+            </section>
+
+            <section class="card" aria-labelledby="fc-goals">
+                <div class="card-head"><h2 id="fc-goals">@L["forecast.goals"] <InfoTip Term="sparplan" /></h2></div>
+                @{
+                    var goals = Engine.Buffers.All().Where(s => s.Target is not null).OrderBy(s => s.Buffer.SortIndex).ToList();
+                }
+                @if (goals.Count == 0)
+                {
+                    <p class="muted mb-0">@L["forecast.noGoals"]</p>
+                }
+                else
+                {
+                    <ul class="list">
+                        @foreach (var s in goals)
+                        {
+                            <li class="list-row">
+                                <CategoryIcon Color="@s.Buffer.Color" IconName="@(s.Buffer.Icon ?? "piggy")" />
+                                <div class="grow">
+                                    <a href="/polster/@s.Buffer.Id">@s.Buffer.Name</a>
+                                    <div class="small muted">@L.Money(s.Balance) / @L.Money(s.Target!.Value) · @L.T("forecast.avgMonthly", L.Money(s.Forecast.AverageMonthly))</div>
+                                    <ProgressBar Percent="s.ProgressPercent ?? 0" Label="@s.Buffer.Name" Variant="@(s.GoalReached ? "done" : "good")" />
+                                </div>
+                                <span class="small @(s.GoalReached ? "pos" : s.Forecast.Possible ? "" : "muted")">
+                                    @(s.GoalReached ? L["forecast.goalReached"] : s.Forecast.Possible && s.Forecast.GoalPeriod is { } g ? L.T("forecast.goalAt", L.Period(g)) : L["forecast.goalNoPlan"])
+                                </span>
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+
+        </div>
+
+        <section class="card mb-2" aria-labelledby="fc-year">
+                @{
+                    var ye = Engine.Forecasts.YearEnd(Current.Year);
+                }
+                <div class="card-head"><h2 id="fc-year">@L.T("forecast.yearEnd", ye.Year)</h2></div>
+                <p class="small muted">@L["forecast.yearEndLead"] · @L.T("forecast.elapsed", ye.ElapsedPeriods)</p>
+                <div class="table-wrap">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th scope="col"></th>
+                                <th scope="col" class="num">@L["forecast.col.toDate"]</th>
+                                <th scope="col" class="num">@L["forecast.col.avg"]</th>
+                                <th scope="col" class="num">@L["forecast.col.irregular"]</th>
+                                <th scope="col" class="num">@L["forecast.col.projected"]</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var (label, fig) in new[] { (L["kpi.income"], ye.Income), (L["kpi.expenses"], ye.Expenses), (L["kpi.allocations"], ye.Allocations) })
+                            {
+                                <tr>
+                                    <th scope="row">@label</th>
+                                    <td class="num">@L.Money(fig.ActualToDate, decimals: 0)</td>
+                                    <td class="num">@L.Money(fig.RegularAverage, decimals: 0)</td>
+                                    <td class="num">@L.Money(fig.NonRegular, decimals: 0)</td>
+                                    <td class="num"><strong>@L.Money(fig.Projected, decimals: 0)</strong></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <dl class="detail-grid mt-2">
+                    <div><dt>@L["forecast.surplus"]</dt><dd class="num @(ye.ProjectedSurplus < 0 ? "neg" : "pos")">@L.Money(ye.ProjectedSurplus, plus: true)</dd></div>
+                    <div><dt>@L["forecast.savingsRate"]</dt><dd>@(ye.ProjectedSavingsRate is { } sr ? L.Pct(sr) : "–")</dd></div>
+                    <div><dt>@L["forecast.yearEndBalance"]</dt><dd class="num">@(ye.ProjectedYearEndBalance is { } yb ? L.Money(yb) : "–")</dd></div>
+                </dl>
+            </section>
+
+        <ScenarioEditor />
+    }
+</div>
+
+@code {
+    private int _months = 6;
+
+    private void OpenCashflow(Period p)
+    {
+        Ui.SetPeriod(p);
+        Nav.NavigateTo("/cashflow");
+    }
+
+    private sealed record DayChartData(List<string> Labels, List<string> Tooltips, List<ChartSeries> Series, int? Today);
+
+    /// <summary>Tagesverlauf: bis heute durchgezogen, danach gestrichelt in eigener Farbe (F-070).</summary>
+    private DayChartData DailyChart(BalanceForecast f)
+    {
+        // Jeder Tag wird gezeichnet: Ausdünnen würde Spitzen (Gehaltseingang) zufällig zeigen oder verschlucken.
+        var picks = f.Daily.ToList();
+        var actual = picks.Select(d => d.IsForecast ? (decimal?)null : d.Balance).ToList();
+        var forecast = picks.Select(d => d.IsForecast || d.Date == Engine.Today ? d.Balance : (decimal?)null).ToList();
+        var series = new List<ChartSeries>();
+        if (actual.Any(v => v is not null)) series.Add(new ChartSeries(L["forecast.chartActual"], actual, ChartColors.At(0)));
+        series.Add(new ChartSeries(L["forecast.chartForecast"], forecast, ChartColors.At(1), Dashed: true));
+        var today = picks.FindIndex(d => d.Date == Engine.Today);
+        return new DayChartData(picks.Select(d => L.DateShort(d.Date)).ToList(), picks.Select(d => $"{L.Weekday(d.Date)}, {L.Date(d.Date)}").ToList(), series, today >= 0 ? today : null);
+    }
+}

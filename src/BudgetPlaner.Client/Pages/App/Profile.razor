@@ -1,0 +1,179 @@
+@page "/profil"
+@inherits AppComponent
+@inject AppStartup Startup
+@inject BrowserJs Browser
+@using BudgetPlaner.Client.Components.Profile
+
+<PageTitle>@L["nav.profile"] · @L["app.name"]</PageTitle>
+
+<div class="page-narrow">
+    <div class="page-head">
+        <div>
+            <h1>@L["nav.profile"]</h1>
+            <p class="lead">@L["profile.lead"]</p>
+        </div>
+    </div>
+
+    <div class="stack">
+        <PersonalSection />
+
+        <section class="card" aria-labelledby="pf-household">
+            <div class="card-head"><h2 id="pf-household">@L["profile.householdSettings"]</h2></div>
+            <p class="small muted">@L["profile.householdHint"]</p>
+            <HouseholdBasics />
+        </section>
+
+        <section class="card" aria-labelledby="pf-notif">
+            <div class="card-head"><h2 id="pf-notif">@L["profile.notifications"]</h2></div>
+            <NotificationSettings />
+        </section>
+
+        <section class="card" aria-labelledby="pf-install">
+            <div class="card-head"><h2 id="pf-install">@L["profile.installApp"] <InfoTip Term="pwa" /></h2></div>
+            @if (_standalone)
+            {
+                <p class="pos mb-0"><Icon Name="check-circle" /> @L["profile.installed"]</p>
+            }
+            else
+            {
+                <p class="small muted">@L["profile.installHint"]</p>
+                @if (Startup.CanInstall)
+                {
+                    <button class="btn btn-primary" @onclick="InstallAsync"><Icon Name="install" />@L["profile.installApp"]</button>
+                }
+                else if (_ios)
+                {
+                    <p class="small mb-0"><Icon Name="share" /> @L["profile.installIos"]</p>
+                }
+            }
+        </section>
+
+        <SecuritySection />
+        <ApiTokensSection />
+
+        <section class="card" aria-labelledby="pf-data">
+            <div class="card-head"><h2 id="pf-data">@L["profile.dataPrivacy"]</h2></div>
+            <div class="stack">
+                <div>
+                    <button class="btn" @onclick="ExportAsync"><Icon Name="download" />@L["profile.exportPersonal"]</button>
+                    <p class="small muted mt-1 mb-0">@L["profile.exportHint"] <a href="/daten">@L["nav.data"]</a></p>
+                </div>
+                <div>
+                    <button class="btn" @onclick="StartOnboarding"><Icon Name="flag" />@L["profile.onboarding"]</button>
+                </div>
+                <div>
+                    <h3>@L["profile.demoTitle"]</h3>
+                    <p class="small muted">@L["profile.demoHint"]</p>
+                    @if (_demo is { HasDemoData: true } d)
+                    {
+                        <p class="small">@L.T("profile.demoActive", d.DemoRecords)</p>
+                        <button class="btn" @onclick="ClearDemoAsync" disabled="@_busy"><Icon Name="trash" />@L["profile.demoClear"]</button>
+                    }
+                    else
+                    {
+                        <button class="btn" @onclick="LoadDemoAsync" disabled="@_busy"><Icon Name="layers" />@L["demo.load"]</button>
+                    }
+                </div>
+            </div>
+        </section>
+
+        <section class="card danger-zone" aria-labelledby="pf-delete">
+            <div class="card-head"><h2 id="pf-delete">@L["profile.deleteTitle"]</h2></div>
+            <p class="small">@L["profile.deleteText"]</p>
+            @if (IsOwner)
+            {
+                <p class="small muted">@L["profile.ownerMustTransfer"]</p>
+            }
+            <button class="btn btn-danger" @onclick="DeleteAccountAsync"><Icon Name="trash" />@L["profile.deleteButton"]</button>
+        </section>
+    </div>
+</div>
+
+@code {
+    private DemoStatusDto? _demo;
+    private bool _busy, _standalone, _ios;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Startup.PwaChanged += OnPwaChanged;
+        try
+        {
+            _standalone = await Browser.Call<bool>("isStandalone");
+            _ios = await Browser.Call<bool>("isIos");
+        }
+        catch (Exception) { }
+        await LoadDemoStatusAsync();
+    }
+
+    private void OnPwaChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public override void Dispose()
+    {
+        Startup.PwaChanged -= OnPwaChanged;
+        base.Dispose();
+    }
+
+    private async Task LoadDemoStatusAsync()
+    {
+        try { _demo = await Api.GetAsync<DemoStatusDto>("api/v1/demo"); } catch (Exception) { /* offline */ }
+    }
+
+    private async Task InstallAsync() => await Browser.Call<bool>("promptInstall");
+
+    private async Task ExportAsync()
+    {
+        try
+        {
+            var token = await Session.GetAccessTokenAsync();
+            await Browser.Run("downloadWithAuth", "/api/v1/me/export", token, "budgetplaner-meine-daten.json");
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private void StartOnboarding()
+    {
+        Ui.ShowOnboarding = true;
+        Ui.Notify();
+    }
+
+    private async Task LoadDemoAsync()
+    {
+        _busy = true;
+        try
+        {
+            await Api.PostAsync("api/v1/demo");
+            await Sync.SyncNowAsync();
+            await LoadDemoStatusAsync();
+            Toasts.Success(L["demo.loaded"]);
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+
+    private async Task ClearDemoAsync()
+    {
+        _busy = true;
+        try
+        {
+            await Api.DeleteAsync("api/v1/demo");
+            await Sync.SyncNowAsync();
+            await LoadDemoStatusAsync();
+            Toasts.Success(L["profile.demoCleared"]);
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+
+    private async Task DeleteAccountAsync()
+    {
+        if (!await Confirm.AskAsync(L["profile.deleteConfirmTitle"], L["profile.deleteConfirmText"], L["profile.deleteButton"], danger: true, requireInput: L["profile.deleteWord"])) return;
+        try
+        {
+            await Api.DeleteAsync("api/v1/me");
+            await Startup.SignOutAsync();
+            Toasts.Info(L["profile.deleted"]);
+            Nav.NavigateTo("/", replace: true);
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+}

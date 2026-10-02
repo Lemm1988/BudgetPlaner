@@ -1,0 +1,49 @@
+@implements IAsyncDisposable
+@inject BrowserJs Browser
+
+@* Drag-and-Drop-Liste (F-015) – Zeiger-Ereignisse funktionieren mit Maus und Touch. *@
+<div @ref="_el" class="@Class">
+    @ChildContent
+</div>
+
+@code {
+    private ElementReference _el;
+    private DotNetObjectReference<SortableList>? _ref;
+    private bool _active;
+
+    [Parameter] public bool Enabled { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public EventCallback<(int From, int To)> OnReorder { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Enabled && !_active)
+        {
+            _ref ??= DotNetObjectReference.Create(this);
+            await Browser.Run("initSortable", _el, _ref, ".drag-handle");
+            _active = true;
+        }
+        else if (!Enabled && _active)
+        {
+            await Browser.Run("destroySortable", _el);
+            _active = false;
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnReorderAsync(int from, int to) => await OnReorder.InvokeAsync((from, to));
+
+    [JSInvokable("OnReorder")]
+    public Task OnReorderJs(int from, int to) => OnReorderAsync(from, to);
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_active) await Browser.Run("destroySortable", _el);
+        }
+        catch (JSDisconnectedException) { }
+        _ref?.Dispose();
+    }
+}

@@ -1,0 +1,7 @@
+@* Farbiges Kategorie-Symbol. *@
+<span class="cat-icon" style="background:@(Color ?? "#707070")" aria-hidden="true"><Icon Name="@(Icon.Exists(IconName) ? IconName! : "dots")" /></span>
+
+@code {
+    [Parameter] public string? Color { get; set; }
+    [Parameter] public string? IconName { get; set; }
+}

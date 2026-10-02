@@ -1,0 +1,82 @@
+@inherits AppComponent
+
+@* Haushaltsweite Grundeinstellungen (F-100 Währung, F-101 Monatsstart): nur der Owner darf ändern. *@
+<form class="stack" @onsubmit="SaveAsync" @onsubmit:preventDefault="true">
+    @if (!IsOwner)
+    {
+        <p class="small muted mb-0"><Icon Name="lock" /> @L["profile.ownerOnly"]</p>
+    }
+    <div class="form-grid">
+        @if (ShowName)
+        {
+            <div class="field">
+                <label for="hb-name">@L["household.name"]</label>
+                <input id="hb-name" class="input" @bind="_name" maxlength="80" disabled="@(!IsOwner)" required />
+            </div>
+        }
+        <div class="field">
+            <label for="hb-currency">@L["profile.currency"]</label>
+            <select id="hb-currency" class="select" @bind="_currency" disabled="@(!IsOwner)">
+                @foreach (var c in Fmt.Currencies)
+                {
+                    <option value="@c.Code">@c.Code (@c.Symbol)</option>
+                }
+            </select>
+        </div>
+        <div class="field">
+            <label for="hb-day">@L["profile.monthStart"] <InfoTip Term="monatsstart" /></label>
+            <select id="hb-day" class="select" @bind="_day" disabled="@(!IsOwner)">
+                @for (var d = 1; d <= 28; d++)
+                {
+                    <option value="@d">@L.T("profile.dayN", d)</option>
+                }
+            </select>
+        </div>
+    </div>
+    <p class="small muted mb-0">@L["profile.monthStartHint"]</p>
+    @if (IsOwner)
+    {
+        <div><button type="submit" class="btn btn-primary" disabled="@_busy"><Icon Name="check" />@L["action.save"]</button></div>
+    }
+</form>
+
+@code {
+    [Parameter] public bool ShowName { get; set; }
+
+    private string _name = "", _currency = "EUR";
+    private int _day = 1;
+    private bool _busy;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        Load();
+    }
+
+    private void Load()
+    {
+        var h = Store.Data.Household;
+        _name = h.Name;
+        _currency = string.IsNullOrEmpty(h.Currency) ? "EUR" : h.Currency;
+        _day = h.CurrentMonthStartDay;
+    }
+
+    private async Task SaveAsync()
+    {
+        var h = Store.Data.Household;
+        _busy = true;
+        try
+        {
+            var dayChanged = _day != h.CurrentMonthStartDay;
+            await Act.UpdateHouseholdAsync(new HouseholdSettingsUpdate(
+                ShowName && _name.Trim() != h.Name ? _name.Trim() : null,
+                _currency != h.Currency ? _currency : null,
+                dayChanged ? _day : null,
+                null));
+            await Sync.SyncNowAsync();
+            Toasts.Success(dayChanged ? L.T("household.monthStartFrom", L.Period(Current.Next)) : L["household.saved"]);
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+}

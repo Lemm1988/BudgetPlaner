@@ -1,0 +1,232 @@
+@inherits AppComponent
+
+@* Geführte Ersteinrichtung (F-140): Einnahmen, Fixkosten, Sparziel – in unter fünf Minuten, jederzeit überspringbar, später erneut aufrufbar. *@
+<Modal Title="@L["onboarding.title"]" OnClose="SkipAsync" Wide="true" CloseOnBackdrop="false">
+    <ChildContent>
+        <div class="steps" aria-hidden="true">
+            @for (var i = 0; i < StepCount; i++)
+            {
+                <span class="@(i < _step ? "done" : i == _step ? "current" : "")"></span>
+            }
+        </div>
+        <p class="small muted">@L.T("onboarding.step", _step + 1, StepCount)</p>
+
+        @switch (_step)
+        {
+            case 0:
+                <p>@L["onboarding.intro"]</p>
+                @if (IsOwner)
+                {
+                    <div class="field" style="max-width:320px">
+                        <label for="ob-day">@L["onboarding.monthStart"] <InfoTip Term="monatsstart" /></label>
+                        <select id="ob-day" class="select" @bind="_day">
+                            @for (var d = 1; d <= 28; d++)
+                            {
+                                <option value="@d">@L.T("profile.dayN", d)</option>
+                            }
+                        </select>
+                        <span class="hint">@L["onboarding.monthStartHint"]</span>
+                    </div>
+                }
+                <div class="row mt-2">
+                    <button class="btn btn-ghost" @onclick="LoadDemoAsync" disabled="@_busy"><Icon Name="layers" />@L["onboarding.demo"]</button>
+                </div>
+                break;
+
+            case 1:
+                <h3>@L["onboarding.income.title"]</h3>
+                <p class="small muted">@L["onboarding.income.text"]</p>
+                <LineEditor Lines="_income" NamePlaceholder="@L["onboarding.income.salary"]" AddLabel="@L["onboarding.income.add"]" />
+                break;
+
+            case 2:
+                <h3>@L["onboarding.fixed.title"]</h3>
+                <p class="small muted">@L["onboarding.fixed.text"]</p>
+                <div class="form-grid">
+                    @foreach (var f in _fixed)
+                    {
+                        var line = f;
+                        <AmountField Label="@L[line.LabelKey]" Value="line.Amount" ValueChanged="v => line.Amount = v" Placeholder="0" />
+                    }
+                </div>
+                <h4 class="mt-2">@L["onboarding.fixed.add"]</h4>
+                <LineEditor Lines="_extra" NamePlaceholder="@L["onboarding.name"]" AddLabel="@L["onboarding.fixed.add"]" StartEmpty="true" />
+                break;
+
+            case 3:
+                <h3>@L["onboarding.goal.title"]</h3>
+                <p class="small muted">@L["onboarding.goal.text"]</p>
+                <label class="check"><input type="checkbox" @bind="_createGoal" />@L["onboarding.goal.create"] <InfoTip Term="notgroschen" /></label>
+                @if (_createGoal)
+                {
+                    <div class="form-grid mt-1">
+                        <AmountField Label="@L["onboarding.goal.target"]" Value="_goalTarget" ValueChanged="v => _goalTarget = v" Hint="@L.T("buffers.emergencySuggestion", L.Money(Suggestion, decimals: 0), L.Num(Engine.Rules.EmergencyFundIncomeMultiplier, 0))" />
+                        <AmountField Label="@L["onboarding.goal.monthly"]" Value="_goalMonthly" ValueChanged="v => _goalMonthly = v" />
+                        <AmountField Label="@L["onboarding.goal.existing"]" Value="_goalExisting" ValueChanged="v => _goalExisting = v" />
+                    </div>
+                }
+                break;
+
+            default:
+                <h3>@L["onboarding.summary.title"]</h3>
+                <dl class="detail-grid" style="font-size:1rem">
+                    <div><dt>@L["onboarding.summary.income"]</dt><dd class="num pos">@L.Money(IncomeTotal)</dd></div>
+                    <div><dt>@L["onboarding.summary.expenses"]</dt><dd class="num">@L.Money(ExpenseTotal)</dd></div>
+                    <div><dt>@L["onboarding.summary.savings"]</dt><dd class="num">@L.Money(SavingsTotal)</dd></div>
+                    <div><dt>@L["onboarding.summary.left"]</dt><dd class="num @(Left < 0 ? "neg" : "")"><strong>@L.Money(Left)</strong></dd></div>
+                </dl>
+                <p class="small mt-2 @(Left < 0 ? "neg" : "muted")">@(Left < 0 ? L["onboarding.summary.over"] : L["onboarding.summary.leftText"])</p>
+                break;
+        }
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-ghost left" @onclick="SkipAsync" disabled="@_busy">@L["onboarding.skip"]</button>
+        @if (_step > 0)
+        {
+            <button type="button" class="btn" @onclick="() => _step--">@L["onboarding.back"]</button>
+        }
+        @if (_step < StepCount - 1)
+        {
+            <button type="button" class="btn btn-primary" @onclick="NextAsync">@(_step == 0 ? L["onboarding.start"] : L["onboarding.next"])<Icon Name="chevron-right" /></button>
+        }
+        else
+        {
+            <button type="button" class="btn btn-primary" @onclick="FinishAsync" disabled="@_busy"><Icon Name="check" />@L["onboarding.finish"]</button>
+        }
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private const int StepCount = 5;
+
+    /// <summary>Eingabezeile mit Bezeichnung und Betrag.</summary>
+    public sealed class Line
+    {
+        public string Name { get; set; } = "";
+        public decimal? Amount { get; set; }
+        public string LabelKey { get; init; } = "";
+        public string CategoryKey { get; init; } = "";
+        public bool IsFixed { get; init; } = true;
+    }
+
+    private int _step, _day = 1;
+    private bool _busy, _createGoal = true;
+    private decimal? _goalTarget, _goalMonthly, _goalExisting;
+    private readonly List<Line> _income = [];
+    private readonly List<Line> _extra = [];
+    private readonly List<Line> _fixed =
+    [
+        new() { LabelKey = "onboarding.fixed.rent", CategoryKey = "housing" },
+        new() { LabelKey = "onboarding.fixed.power", CategoryKey = "housing" },
+        new() { LabelKey = "onboarding.fixed.internet", CategoryKey = "living" },
+        new() { LabelKey = "onboarding.fixed.insurance", CategoryKey = "living" },
+        new() { LabelKey = "onboarding.fixed.mobility", CategoryKey = "mobility" },
+        new() { LabelKey = "onboarding.fixed.groceries", CategoryKey = "living", IsFixed = false },
+        new() { LabelKey = "onboarding.fixed.childcare", CategoryKey = "living" },
+        new() { LabelKey = "onboarding.fixed.subscriptions", CategoryKey = "guiltfree" },
+    ];
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        _day = Store.Data.Household.CurrentMonthStartDay;
+        _income.Add(new Line { Name = L["onboarding.income.salary"] });
+    }
+
+    private decimal IncomeTotal => _income.Sum(l => l.Amount ?? 0);
+    private decimal ExpenseTotal => _fixed.Sum(l => l.Amount ?? 0) + _extra.Sum(l => l.Amount ?? 0);
+    private decimal SavingsTotal => _createGoal ? _goalMonthly ?? 0 : 0;
+    private decimal Left => IncomeTotal - ExpenseTotal - SavingsTotal;
+    private decimal Suggestion => Math.Round(IncomeTotal * Engine.Rules.EmergencyFundIncomeMultiplier / 100m, MidpointRounding.AwayFromZero) * 100m;
+
+    private Task NextAsync()
+    {
+        _step++;
+        if (_step == 3)
+        {
+            _goalTarget ??= Suggestion > 0 ? Suggestion : null;
+            if (_goalMonthly is null && IncomeTotal > 0) _goalMonthly = Math.Max(0, Math.Round(Math.Min(IncomeTotal * 0.1m, Math.Max(0, IncomeTotal - ExpenseTotal)) / 10m) * 10m);
+        }
+        return Task.CompletedTask;
+    }
+
+    private Guid Cat(string key, CategoryType type) =>
+        (Ix.Categories.FirstOrDefault(c => c.DefaultKey == key) ?? Ix.Categories.First(c => c.Type == type)).Id;
+
+    private async Task FinishAsync()
+    {
+        _busy = true;
+        try
+        {
+            if (IsOwner && _day != Store.Data.Household.CurrentMonthStartDay)
+                await Act.UpdateHouseholdAsync(new HouseholdSettingsUpdate(null, null, _day, null));
+
+            var changes = new List<Change>();
+            foreach (var l in _income.Where(l => l.Amount is > 0))
+            {
+                var e = Act.NewEntry(EntryKind.Income, Cat("salary", CategoryType.Income), Current);
+                e.Name = string.IsNullOrWhiteSpace(l.Name) ? L["onboarding.income.salary"] : l.Name.Trim();
+                e.Amount = l.Amount!.Value;
+                e.IsFixed = true;
+                changes.Add(Change.Save(e));
+            }
+            foreach (var l in _fixed.Where(l => l.Amount is > 0))
+            {
+                var e = Act.NewEntry(EntryKind.Expense, Cat(l.CategoryKey, CategoryType.Expense), Current);
+                e.Name = L[l.LabelKey];
+                e.Amount = l.Amount!.Value;
+                e.IsFixed = l.IsFixed;
+                changes.Add(Change.Save(e));
+            }
+            foreach (var l in _extra.Where(l => l.Amount is > 0 && !string.IsNullOrWhiteSpace(l.Name)))
+            {
+                var e = Act.NewEntry(EntryKind.Expense, Cat("living", CategoryType.Expense), Current);
+                e.Name = l.Name.Trim();
+                e.Amount = l.Amount!.Value;
+                e.IsFixed = true;
+                changes.Add(Change.Save(e));
+            }
+            if (changes.Count > 0) await Store.MutateAsync(changes);
+
+            if (_createGoal && (_goalTarget is > 0 || _goalMonthly is > 0 || _goalExisting is > 0))
+            {
+                var buffer = new BufferEntry
+                {
+                    Name = L["buffers.emergency"], IsEmergencyFund = true, TargetAmount = _goalTarget is > 0 ? _goalTarget : null,
+                    SeparateAccount = true, Icon = "shield", Color = ColorIconPicker.Colors[0],
+                };
+                await Act.SaveBufferAsync(buffer, _goalExisting, _goalMonthly is > 0 ? _goalMonthly : null, null, Current);
+            }
+            await Act.CompleteOnboardingAsync();
+            Toasts.Success(L["onboarding.done"]);
+            await OnClose.InvokeAsync();
+            Nav.NavigateTo("/budget");
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+
+    private async Task SkipAsync()
+    {
+        try { await Act.CompleteOnboardingAsync(); } catch (Exception) { /* offline: wird später synchronisiert */ }
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task LoadDemoAsync()
+    {
+        _busy = true;
+        try
+        {
+            await Api.PostAsync("api/v1/demo");
+            await Act.CompleteOnboardingAsync();
+            await Sync.SyncNowAsync();
+            Toasts.Success(L["demo.loaded"]);
+            await OnClose.InvokeAsync();
+            Nav.NavigateTo("/uebersicht");
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+}

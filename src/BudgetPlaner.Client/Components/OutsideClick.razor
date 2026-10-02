@@ -1,0 +1,45 @@
+@implements IAsyncDisposable
+@inject BrowserJs Browser
+
+<div @ref="_el" style="display:contents">
+    @ChildContent
+</div>
+
+@code {
+    private ElementReference _el;
+    private DotNetObjectReference<OutsideClick>? _ref;
+    private bool _registered;
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public EventCallback OnOutside { get; set; }
+    [Parameter] public bool Active { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Active && !_registered)
+        {
+            _ref ??= DotNetObjectReference.Create(this);
+            // display:contents hat keine Box – das erste Kindelement dient als Bezug.
+            await Browser.Run("onClickOutside", _el, _ref);
+            _registered = true;
+        }
+        else if (!Active && _registered)
+        {
+            await Browser.Run("offClickOutside", _el);
+            _registered = false;
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnClickOutside() => await OnOutside.InvokeAsync();
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_registered) await Browser.Run("offClickOutside", _el);
+        }
+        catch (JSDisconnectedException) { }
+        _ref?.Dispose();
+    }
+}

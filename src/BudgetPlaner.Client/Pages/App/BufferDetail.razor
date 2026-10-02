@@ -1,0 +1,221 @@
+@page "/polster/{Id:guid}"
+@inherits AppComponent
+@using BudgetPlaner.Client.Components.Buffers
+@using BudgetPlaner.Client.Components.Charts
+
+<PageTitle>@(Buffer?.Name ?? L["nav.buffers"]) · @L["app.name"]</PageTitle>
+
+<div class="page">
+    <a class="btn btn-ghost btn-sm mb-1" href="/polster"><Icon Name="chevron-left" />@L["buffer.backToList"]</a>
+
+    @if (!Store.IsLoaded)
+    {
+        <div class="card"><div class="skeleton" style="height:10rem"></div></div>
+    }
+    else if (Buffer is null)
+    {
+        <div class="card"><EmptyState Icon="piggy" Title="@L["buffer.notFound"]"><a class="btn" href="/polster">@L["buffer.backToList"]</a></EmptyState></div>
+    }
+    else
+    {
+        var s = Engine.Buffers.Status(Id);
+        var f = s.Forecast;
+        <div class="page-head">
+            <div class="row" style="gap:.75rem;flex-wrap:nowrap">
+                <CategoryIcon Color="@Buffer.Color" IconName="@(Buffer.Icon ?? "piggy")" />
+                <div>
+                    <h1>@Buffer.Name</h1>
+                    <p class="lead">
+                        @(Buffer.SeparateAccount ? L["buffers.separate"] : L["buffers.onAccount"])
+                        @if (Buffer.IsEmergencyFund) { <span> · @L["buffers.emergency"]</span> }
+                    </p>
+                </div>
+            </div>
+            <div class="page-actions">
+                <button class="btn btn-primary" @onclick="() => _tx = false"><Icon Name="arrow-down" />@L["buffer.allocate"]</button>
+                <button class="btn" disabled="@(s.Balance <= 0)" @onclick="() => _tx = true"><Icon Name="arrow-up" />@L["buffer.withdraw"]</button>
+                <button class="btn" @onclick="() => _editing = true"><Icon Name="edit" /><span class="sr-only">@L["action.edit"]</span></button>
+                <button class="btn" @onclick="DeleteAsync"><Icon Name="trash" /><span class="sr-only">@L["action.delete"]</span></button>
+            </div>
+        </div>
+
+        <section class="card mb-2" aria-label="@L["buffers.summary"]">
+            <div class="grid grid-4" style="gap:.9rem">
+                <div class="stat">
+                    <span class="stat-label">@L["buffer.balance"]</span>
+                    <span class="stat-value">@L.Money(s.Balance)</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">@L["buffer.target"]</span>
+                    <span class="stat-value sm">@(s.Target is { } t ? L.Money(t) : "–")</span>
+                    @if (Buffer.TargetDate is { } td)
+                    {
+                        <span class="stat-hint">@L["buffer.targetDate"]: @L.Date(td)</span>
+                    }
+                </div>
+                <div class="stat">
+                    <span class="stat-label">@L["buffer.plan"] <InfoTip Term="sparplan" /></span>
+                    <span class="stat-value sm">@(s.PlannedThisPeriod > 0 ? L.T("buffers.perMonth", L.Money(s.PlannedThisPeriod)) : L["buffers.noPlan"])</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">@L["buffer.forecast"] <InfoTip Term="prognose" /></span>
+                    <span class="stat-value sm @(s.GoalReached ? "pos" : "")">
+                        @(s.Target is null ? "–" : s.GoalReached ? L["buffers.goalReached"] : f.Possible && f.GoalPeriod is { } gp ? L.Period(gp) : L["buffers.goalUnknown"])
+                    </span>
+                    @if (!s.GoalReached && f.Possible && f.Months is > 0 and var m)
+                    {
+                        <span class="stat-hint">@L.T("debts.debtFreeIn", L.Duration(m, dative: true))</span>
+                    }
+                </div>
+            </div>
+            @if (s.ProgressPercent is { } pct)
+            {
+                <div class="mt-2">
+                    <div class="row-between small"><span class="muted">@L["buffer.progress"]</span><strong>@L.Pct(pct, 0)</strong></div>
+                    <ProgressBar Percent="pct" Label="@L["buffer.progress"]" Large="true" Variant="@(s.GoalReached ? "done" : "good")" />
+                </div>
+            }
+            @if (s.Target is not null && f.PeriodsInAverage > 0)
+            {
+                <p class="small muted mt-1 mb-0">@L.T("buffer.forecastHint", L.Money(f.AverageMonthly), f.PeriodsInAverage)</p>
+            }
+            @if (s.RequiredMonthlyForTargetDate is { } req && Buffer.TargetDate is { } targetDate)
+            {
+                <div class="notice @(req > Math.Max(f.AverageMonthly, 0) ? "warn" : "info") mt-2">
+                    <Icon Name="target" />
+                    <div>@L.T("buffer.requiredMonthlyText", L.Date(targetDate), L.Money(req))</div>
+                </div>
+            }
+            @if (Buffer.Note is { } note)
+            {
+                <p class="small muted mt-1 mb-0">@note</p>
+            }
+        </section>
+
+        @if (ChartData is { } c)
+        {
+            <section class="card mb-2" aria-labelledby="buffer-chart">
+                <div class="card-head"><h2 id="buffer-chart">@L["buffer.chartTitle"]</h2></div>
+                <LineChart Title="@L["buffer.chartTitle"]" Labels="c.Labels" TooltipLabels="c.Tooltips" Series="c.Series" Format="v => L.Money(v)"
+                           AxisFormat="v => L.MoneyCompact(v)" MarkIndex="c.TodayIndex" MarkLabel="@L["month.today"]"
+                           TargetLine="s.Target" TargetLabel="@(s.Target is { } tl ? L["buffer.chartTarget"] + " " + L.MoneyCompact(tl) : null)" Height="230" />
+            </section>
+        }
+
+        <section class="card" aria-labelledby="buffer-history">
+            <div class="card-head">
+                <h2 id="buffer-history">@L["buffer.history"]</h2>
+                <span class="badge">@s.History.Count</span>
+            </div>
+            @if ((Ix.EntriesByBuffer.GetValueOrDefault(Id)?.Length ?? 0) > 0)
+            {
+                <p class="small muted">@L["buffer.planFromBudget"]</p>
+            }
+            @if (s.History.Count == 0)
+            {
+                <p class="muted small mb-0">@L["buffer.noHistory"]</p>
+            }
+            else
+            {
+                <ul class="list">
+                    @foreach (var h in s.History.Reverse().Take(_shown))
+                    {
+                        <li class="list-row">
+                            <Icon Name="@(h.SignedAmount >= 0 ? "arrow-down" : "arrow-up")" Class="@(h.SignedAmount >= 0 ? "pos" : "neg")" />
+                            <div class="grow">
+                                <div class="row" style="gap:.4rem">
+                                    <strong class="num @(h.SignedAmount >= 0 ? "pos" : "")">@L.Money(h.SignedAmount, plus: true)</strong>
+                                    <span>@(h.Type == BufferTransactionType.Allocation ? L["buffer.allocation"] : L["buffer.withdrawal"])</span>
+                                    @if (h.SourceEntryId is not null) { <span class="badge primary">@L["buffer.fromPlan"]</span> }
+                                    @if (h.IsProjected) { <span class="badge">@L["debt.auto"]</span> }
+                                    @if (!h.AffectsBudget) { <span class="badge">@L["buffer.notInBudget"]</span> }
+                                </div>
+                                <div class="small muted">@L.Date(h.Date)@(h.Reason is { } r ? " · " + r : "") · @L["col.bufferBalance"] @L.Money(h.BalanceAfter)</div>
+                            </div>
+                            @if (h.TransactionId is { } tid && h.SourceEntryId is null && !IsClosed(h.Date) && Store.Find<BufferTransaction>(tid) is { } tx)
+                            {
+                                <button class="icon-btn sm" aria-label="@L["action.delete"]" @onclick="() => DeleteTxAsync(tx)"><Icon Name="trash" /></button>
+                            }
+                        </li>
+                    }
+                </ul>
+                @if (s.History.Count > _shown)
+                {
+                    <button class="btn btn-ghost btn-sm mt-1" @onclick="() => _shown += 25">@L["action.more"] (@(s.History.Count - _shown))</button>
+                }
+            }
+        </section>
+    }
+</div>
+
+@if (_editing && Buffer is not null)
+{
+    <BufferDialog Buffer="Buffer" OnClose="() => _editing = false" />
+}
+@if (_tx is { } withdraw && Buffer is not null)
+{
+    <BufferTxDialog Buffer="Buffer" Withdraw="withdraw" OnClose="() => _tx = null" />
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private bool _editing;
+    private bool? _tx;
+    private int _shown = 25;
+
+    private BufferEntry? Buffer => Ix.BufferById.GetValueOrDefault(Id);
+
+    /// <summary>Buchungen in abgeschlossenen Monaten sind eingefroren (Monat erst wieder öffnen).</summary>
+    private bool IsClosed(DateOnly date) => Ix.SnapshotByPeriod.ContainsKey(Ix.Calendar.PeriodOf(date).Index);
+
+    private sealed record BufferChart(List<string> Labels, List<string> Tooltips, List<ChartSeries> Series, int? TodayIndex);
+
+    /// <summary>Monatsendstände bis heute (durchgezogen) und Prognose mit Ø-Sparrate (gestrichelt) bis zum Ziel bzw. 12 Monate.</summary>
+    private BufferChart? ChartData
+    {
+        get
+        {
+            if (Buffer is null) return null;
+            var s = Engine.Buffers.Status(Id);
+            var cal = Ix.Calendar;
+            var first = s.History.Count > 0 ? cal.PeriodOf(s.History[0].Date) : Current;
+            if (first > Current) first = Current;
+            if (Period.MonthsBetween(first, Current) > 35) first = Current.AddMonths(-35);
+            var f = s.Forecast;
+            var ahead = 0;
+            if (!s.GoalReached && f.Possible && f.GoalPeriod is { } gp) ahead = Math.Clamp(Period.MonthsBetween(Current, gp), 1, 36);
+            else if (f.AverageMonthly > 0) ahead = 12;
+            var end = Current.AddMonths(ahead);
+            var periods = Period.Range(first, end).ToList();
+            if (periods.Count < 2) return null;
+            var history = new List<decimal?>();
+            var forecast = new List<decimal?>();
+            foreach (var p in periods)
+            {
+                history.Add(p < Current ? Engine.Buffers.BalanceAt(Id, cal.End(p)) : p == Current ? s.Balance : null);
+                if (p < Current || ahead == 0) { forecast.Add(null); continue; }
+                var k = Period.MonthsBetween(Current, p);
+                var value = s.Balance + Math.Max(0, f.AverageMonthly) * k;
+                forecast.Add(s.Target is { } t && !s.GoalReached ? Math.Min(value, Math.Max(t, s.Balance)) : value);
+            }
+            var series = new List<ChartSeries> { new(L["buffer.chartHistory"], history, ChartColors.At(0), Area: true) };
+            if (forecast.Count(v => v is not null) > 1) series.Add(new ChartSeries(L["buffer.chartForecast"], forecast, ChartColors.At(1), Dashed: true));
+            return new BufferChart(periods.Select(p => L.Period(p, shortName: true)).ToList(), periods.Select(p => L.Period(p)).ToList(), series, periods.IndexOf(Current));
+        }
+    }
+
+    private async Task DeleteTxAsync(BufferTransaction tx)
+    {
+        if (!await Confirm.AskAsync(L["buffer.deleteTxTitle"], L.T("buffer.deleteTxText", L.Date(tx.Date), L.Money(tx.Amount)), L["action.delete"], danger: true)) return;
+        await Act.DeleteBufferTransactionAsync(tx);
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (Buffer is not { } b) return;
+        if (!await Confirm.AskAsync(L["buffer.deleteTitle"], L.T("buffer.deleteText", b.Name), L["action.delete"], danger: true)) return;
+        await Act.DeleteBufferAsync(b);
+        Nav.NavigateTo("/polster");
+    }
+}

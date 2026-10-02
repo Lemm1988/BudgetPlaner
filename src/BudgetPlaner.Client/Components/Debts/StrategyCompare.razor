@@ -1,0 +1,144 @@
+@inherits AppComponent
+@using BudgetPlaner.Client.Components.Charts
+
+@* Tilgungsstrategien Schneeball vs. Lawine vs. Mindestraten (F-071, B-10) mit frei wählbarem Zusatzbetrag. *@
+<section class="card" id="strategien" aria-labelledby="strategy-title">
+    <div class="card-head">
+        <h2 id="strategy-title">@L["debts.strategyTitle"] <InfoTip Term="schneeball" /></h2>
+    </div>
+    <p class="muted small">@L["debts.strategyLead"]</p>
+    <div class="form-grid mb-2" style="max-width:420px">
+        <AmountField Label="@L["debts.strategyExtra"]" Value="_extra" ValueChanged="SetExtra" Hint="@L["debts.strategyExtraHint"]" />
+    </div>
+
+    <div class="grid grid-3">
+        @foreach (var (key, result) in Results)
+        {
+            var best = key == BestKey;
+            <div class="card flat @(best ? "soft" : "")" style="@(best ? "border-color:var(--primary)" : "")">
+                <div class="card-head">
+                    <h3>@L["debts.strategy." + key]</h3>
+                    @if (best)
+                    {
+                        <span class="badge good"><Icon Name="check" />@L["debts.strategy.best"]</span>
+                    }
+                </div>
+                @if (!result.Possible)
+                {
+                    <p class="neg small mb-0"><Icon Name="alert" /> @L["debts.strategy.impossible"]</p>
+                }
+                else
+                {
+                    <dl class="detail-grid">
+                        <div><dt>@L["debts.strategy.freeBy"]</dt><dd>@L.Period(PeriodOfMonth(result.Months))</dd></div>
+                        <div><dt>@L["debts.strategy.duration"]</dt><dd>@L.Duration(result.Months)</dd></div>
+                        <div><dt>@L["debts.strategy.interest"]</dt><dd class="num">@L.Money(result.TotalInterest)</dd></div>
+                        @if (key != "minimum" && Minimum.Possible)
+                        {
+                            <div><dt>@L["debts.strategy.saving"]</dt><dd class="num pos">@L.Money(Math.Max(0, Minimum.TotalInterest - result.TotalInterest))</dd></div>
+                        }
+                    </dl>
+                    @if (result.Order.Count > 1)
+                    {
+                        <p class="small muted mt-1 mb-0">@L["debts.strategy.order"]:</p>
+                        <ol class="small" style="margin:.25rem 0 0;padding-left:1.2rem">
+                            @foreach (var o in result.Order)
+                            {
+                                <li>@o.Name <span class="muted">– @L.Period(PeriodOfMonth(o.Month))</span></li>
+                            }
+                        </ol>
+                    }
+                }
+            </div>
+        }
+    </div>
+
+    @if (Chart is { } c)
+    {
+        <div class="mt-2">
+            <LineChart Title="@L["debts.strategy.chart"]" Labels="c.Labels" TooltipLabels="c.Tooltips" Series="c.Series" Format="v => L.Money(v, decimals: 0)"
+                       AxisFormat="v => L.MoneyCompact(v)" Height="220" XTitle="@L["chart.period"]" />
+        </div>
+    }
+</section>
+
+@code {
+    private decimal? _extra;
+    private bool _initialized;
+    private List<(string Key, StrategyResult Result)> _results = [];
+    private (List<string> Labels, List<string> Tooltips, List<ChartSeries> Series)? _chart;
+
+    private IReadOnlyList<(string Key, StrategyResult Result)> Results => _results;
+    private StrategyResult Minimum => _results.First(r => r.Key == "minimum").Result;
+    private (List<string> Labels, List<string> Tooltips, List<ChartSeries> Series)? Chart => _chart;
+
+    private string? BestKey => _results.Where(r => r.Result.Possible && r.Key != "minimum")
+        .OrderBy(r => r.Result.TotalInterest).ThenBy(r => r.Result.Months).Select(r => r.Key).FirstOrDefault();
+
+    protected override void OnParametersSet()
+    {
+        if (!_initialized)
+        {
+            _initialized = true;
+            var summary = Engine.Forecasts.DebtFree();
+            var planned = summary.Snowball is not null ? PlannedExtra() : 0;
+            _extra = planned > 0 ? planned : null;
+        }
+        Compute();
+    }
+
+    protected override void OnDataChanged() => Compute();
+
+    private void SetExtra(decimal? v)
+    {
+        _extra = v is > 0 ? v : null;
+        Compute();
+    }
+
+    private decimal PlannedExtra() => Ix.Debts.Sum(d => (Ix.EntriesByDebt.GetValueOrDefault(d.Id) ?? [])
+        .Where(e => e.DebtRole == DebtRole.Extra && EntrySchedule.IsDue(e, Current))
+        .Sum(e => EntrySchedule.State(Ix, e, Current).Planned));
+
+    private void Compute()
+    {
+        var open = Engine.Debts.All().Where(s => !s.IsPaidOff && s.Balance > 0).ToList();
+        var debts = open.Select(s => new StrategyDebt(s.Debt.Name, s.Balance, Engine.Debts.RegularRate(s.Debt, Current), s.Debt.InterestRate ?? 0, s.Debt.Id)).ToList();
+        var extra = _extra ?? 0;
+        _results =
+        [
+            ("minimum", DebtStrategy.Simulate(debts, 0, PayoffStrategy.Minimum)),
+            ("snowball", DebtStrategy.Simulate(debts, extra, PayoffStrategy.Snowball)),
+            ("avalanche", DebtStrategy.Simulate(debts, extra, PayoffStrategy.Avalanche)),
+        ];
+        _chart = BuildChart();
+    }
+
+    private (List<string>, List<string>, List<ChartSeries>)? BuildChart()
+    {
+        var possible = _results.Where(r => r.Result.BalanceTimeline.Count > 0).ToList();
+        if (possible.Count == 0) return null;
+        var months = Math.Min(possible.Max(r => r.Result.BalanceTimeline.Count), 600);
+        var step = months <= 48 ? 1 : months <= 144 ? 3 : 12;
+        var indexes = new List<int> { 0 };
+        for (var k = step; k < months; k += step) indexes.Add(k);
+        if (indexes[^1] != months) indexes.Add(months);
+        var start = Open.Sum(s => s.Balance);
+        var labels = indexes.Select(k => k == 0 ? L["chart.today"] : L.Period(PeriodOfMonth(k), shortName: true)).ToList();
+        var tooltips = indexes.Select(k => k == 0 ? L["chart.today"] : $"{L.Period(PeriodOfMonth(k))} · {L.T("debts.strategy.month", k)}").ToList();
+        var series = new List<ChartSeries>();
+        var i = 0;
+        foreach (var (key, r) in _results)
+        {
+            var values = indexes.Select(k => k == 0 ? start : k - 1 < r.BalanceTimeline.Count ? r.BalanceTimeline[k - 1] : (decimal?)(r.Possible ? 0 : null)).ToList();
+            series.Add(new ChartSeries(L["debts.strategy." + key], values, ChartColors.At(i++), Dashed: key == "minimum"));
+        }
+        return (labels, tooltips, series);
+    }
+
+    private IEnumerable<DebtStatus> Open => Engine.Debts.All().Where(s => !s.IsPaidOff && s.Balance > 0);
+
+    /// <summary>Simulationsmonat 1 = erste noch offene Rate: laufende Periode, falls dort noch eine Rate fällig ist, sonst die nächste.</summary>
+    private Period FirstPaymentPeriod => Open.Any(s => Engine.Debts.PlannedPayments(s.Debt, Current).Any(x => !x.IsExtra)) ? Current : Current.Next;
+
+    private Period PeriodOfMonth(int month) => FirstPaymentPeriod.AddMonths(Math.Max(0, month - 1));
+}

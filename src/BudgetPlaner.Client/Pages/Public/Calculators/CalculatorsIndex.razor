@@ -1,0 +1,29 @@
+@page "/rechner"
+@layout PublicLayout
+@inject Loc L
+
+<PageTitle>@L["calc.title"] · @L["app.name"]</PageTitle>
+
+<div class="page" style="padding:1.5rem 0 3rem">
+    <h1>@L["calc.title"]</h1>
+    <p class="lead muted">@L["calc.lead"]</p>
+    <div class="grid grid-3 mt-2">
+        @foreach (var (key, icon, slug) in Calculators)
+        {
+            <a class="card link calc-card" href="/rechner/@slug">
+                <span class="f-icon"><Icon Name="@icon" /></span>
+                <h2 class="h3">@L[$"calc.{key}.title"]</h2>
+                <p class="small muted mb-1">@L[$"calc.{key}.short"]</p>
+                <span class="small" style="color:var(--primary);font-weight:700">@L["calc.open"] →</span>
+            </a>
+        }
+    </div>
+</div>
+
+@code {
+    public static readonly (string Key, string Icon, string Slug)[] Calculators =
+    [
+        ("compound", "trend-up", "zinseszins"), ("loan", "coins", "kredit"), ("wage", "clock", "stundenlohn"),
+        ("retirement", "sun", "ruhestand"), ("mortgage", "home", "baufinanzierung"), ("payoff", "debt", "tilgung"),
+    ];
+}

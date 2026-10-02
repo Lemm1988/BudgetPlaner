@@ -1,0 +1,47 @@
+@inject BrowserJs Browser
+@inject NavigationManager Nav
+@inject ToastService Toasts
+@inject Loc L
+
+@* Teilen (B-14): System-Teilen (inkl. Instagram/WhatsApp auf Mobilgeräten), sonst direkte Links. Teilt nie Beträge. *@
+<div class="menu-wrap">
+    <OutsideClick OnOutside="() => _open = false" Active="_open">
+        <button class="@ButtonClass" @onclick="ShareAsync" aria-haspopup="menu" aria-expanded="@(_open ? "true" : "false")"><Icon Name="share" />@(Label ?? L["share.button"])</button>
+        @if (_open)
+        {
+            <div class="menu" role="menu">
+                <a role="menuitem" href="@($"https://wa.me/?text={Uri.EscapeDataString(Text + " " + Url)}")" target="_blank" rel="noopener">WhatsApp</a>
+                <a role="menuitem" href="@($"https://www.facebook.com/sharer/sharer.php?u={Uri.EscapeDataString(Url)}")" target="_blank" rel="noopener">Facebook</a>
+                <a role="menuitem" href="@($"https://twitter.com/intent/tweet?text={Uri.EscapeDataString(Text)}&url={Uri.EscapeDataString(Url)}")" target="_blank" rel="noopener">X</a>
+                <a role="menuitem" href="@($"https://www.linkedin.com/sharing/share-offsite/?url={Uri.EscapeDataString(Url)}")" target="_blank" rel="noopener">LinkedIn</a>
+                <button role="menuitem" @onclick="CopyAsync"><Icon Name="copy" />@L["share.copyLink"]</button>
+                <div class="menu-head small">@L["share.instagramHint"]</div>
+            </div>
+        }
+    </OutsideClick>
+</div>
+
+@code {
+    private bool _open;
+
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Message { get; set; }
+    /// <summary>Zu teilender Link (Standard: Startseite der App).</summary>
+    [Parameter] public string? ShareUrl { get; set; }
+    [Parameter] public string ButtonClass { get; set; } = "btn";
+
+    private string Url => ShareUrl ?? Nav.BaseUri;
+    private string Text => Message ?? L["share.text"];
+
+    private async Task ShareAsync()
+    {
+        if (await Browser.Call<bool>("canShare") && await Browser.Call<bool>("share", L["app.name"], Text, Url)) return;
+        _open = !_open;
+    }
+
+    private async Task CopyAsync()
+    {
+        _open = false;
+        if (await Browser.Call<bool>("copyText", $"{Text} {Url}")) Toasts.Success(L["share.copied"]);
+    }
+}

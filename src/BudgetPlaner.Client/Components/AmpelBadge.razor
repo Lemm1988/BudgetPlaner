@@ -1,0 +1,91 @@
+@inject Loc L
+
+@* Ampel (F-051): Farbe + Symbol + Text (F-121), Tooltip mit Rechenweg. *@
+<span class="info">
+    <OutsideClick OnOutside="Close" Active="_open">
+        <span style="position:relative;display:inline-flex">
+            <button type="button" class="ampel-btn" @onclick="Toggle" @onkeydown="OnKey"
+                    aria-label="@($"{Label}: {L.Of(Status)}. {L["ampel.howCalculated"]}")" aria-expanded="@(_open ? "true" : "false")">
+                <span class="ampel @StatusClass @(Compact ? "compact" : "")">
+                    <span class="ampel-icon"><Icon Name="@IconName" StrokeWidth="3" /></span>
+                    @if (!Compact)
+                    {
+                        <span>@(ShowLabel && Label is not null ? $"{Label}: " : "")@L.Of(Status)</span>
+                    }
+                </span>
+            </button>
+            @if (_open)
+            {
+                <span class="popover @(AlignRight ? "align-right" : "")" role="tooltip">
+                    <strong>@(Label ?? L["ampel.title"]) · @L.Of(Status)</strong>
+                    @Explanation
+                    <span class="formula">@L["ampel.legend"]</span>
+                </span>
+            }
+        </span>
+    </OutsideClick>
+</span>
+
+@code {
+    private bool _open;
+
+    [Parameter] public AmpelItem? Item { get; set; }
+    [Parameter] public AmpelStatus StatusOverride { get; set; } = AmpelStatus.Neutral;
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Text { get; set; }
+    [Parameter] public bool Compact { get; set; }
+    [Parameter] public bool ShowLabel { get; set; }
+    [Parameter] public bool AlignRight { get; set; }
+
+    private AmpelStatus Status => Item?.Status ?? StatusOverride;
+
+    private string StatusClass => Status switch
+    {
+        AmpelStatus.Green => "green",
+        AmpelStatus.Yellow => "yellow",
+        AmpelStatus.Red => "red",
+        _ => "neutral",
+    };
+
+    private string IconName => Status switch
+    {
+        AmpelStatus.Green => "check",
+        AmpelStatus.Yellow => "alert",
+        AmpelStatus.Red => "x",
+        _ => "minus",
+    };
+
+    private string Explanation => Text ?? (Item is null ? "" : Explain(Item));
+
+    private string Explain(AmpelItem i)
+    {
+        string M(decimal? v) => L.Money(v ?? 0);
+        string P(decimal? v) => L.Pct(v);
+        if (i.Key == "budget")
+            return L.T("ampel.explain.budget", M(i.Value), M(i.YellowLimit));
+        if (i.Key == "cashflow")
+            return Status == AmpelStatus.Neutral ? L["ampel.explain.cashflowNoAnchor"] : L.T("ampel.explain.cashflow", M(i.Value), M(i.GreenLimit));
+        if (i.Key == "debts")
+            return L.T("ampel.explain.debts", M(i.Numerator), M(i.Denominator), P(i.Value), P(i.GreenLimit), P(i.YellowLimit));
+        if (i.Key == "buffers")
+            return i.Value is null ? L["ampel.explain.buffersNone"]
+                : L.T("ampel.explain.buffers", M(i.Numerator), M(i.Denominator), L.Num(i.Value.Value, 1), L.Num(i.GreenLimit ?? 0, 0), L.Num(i.YellowLimit ?? 0, 0));
+        if (i.Key is "savings" or "investing")
+            return i.Value is null ? L["ampel.explain.noIncome"] : L.T("ampel.explain.min", M(i.Numerator), M(i.Denominator), P(i.Value), P(i.GreenLimit), P(i.YellowLimit));
+        return i.Value is null ? L["ampel.explain.noIncome"] : L.T("ampel.explain.max", M(i.Numerator), M(i.Denominator), P(i.Value), P(i.GreenLimit), P(i.YellowLimit));
+    }
+
+    private void Toggle() => _open = !_open;
+
+    private void Close()
+    {
+        if (!_open) return;
+        _open = false;
+        StateHasChanged();
+    }
+
+    private void OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") Close();
+    }
+}

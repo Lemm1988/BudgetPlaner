@@ -1,0 +1,88 @@
+@inject Loc L
+
+@* Betragsfeld: tolerante Eingabe (1.234,56 / 1234.56), numerische Tastatur, 16px gegen Auto-Zoom (F-092). *@
+<div class="field">
+    @if (Label is not null)
+    {
+        <label for="@_id">@Label @if (Required) {<span aria-hidden="true">*</span>}</label>
+    }
+    <div class="input-group">
+        <input id="@_id" class="input amount" inputmode="decimal" autocomplete="off" value="@_text" placeholder="@Placeholder"
+               aria-invalid="@(_error is not null ? "true" : "false")" aria-describedby="@(_error is not null ? _id + "-err" : Hint is not null ? _id + "-hint" : null)"
+               @onchange="OnChange" @onblur="OnBlur" required="@Required" @attributes="Attributes" />
+        <span class="input-addon" aria-hidden="true">@(Suffix ?? L.CurrencySymbol)</span>
+    </div>
+    @if (_error is not null)
+    {
+        <span class="error" id="@(_id)-err" role="alert">@_error</span>
+    }
+    else if (Hint is not null)
+    {
+        <span class="hint" id="@(_id)-hint">@Hint</span>
+    }
+</div>
+
+@code {
+    private readonly string _id = "amt-" + Guid.NewGuid().ToString("N")[..8];
+    private string _text = "";
+    private string? _error;
+    private decimal? _last;
+
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public decimal? Value { get; set; }
+    [Parameter] public EventCallback<decimal?> ValueChanged { get; set; }
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool AllowNegative { get; set; }
+    [Parameter] public string? Hint { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public string? Suffix { get; set; }
+    [Parameter] public int Decimals { get; set; } = 2;
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? Attributes { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (Value != _last || string.IsNullOrEmpty(_text) && Value is not null)
+        {
+            _text = Value is { } v ? Format(v) : "";
+            _last = Value;
+        }
+    }
+
+    private string Format(decimal v) => Decimals == 2 ? L.AmountInput(v) : v.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture).Replace('.', L.Lang == "de" ? ',' : '.');
+
+    private async Task OnChange(ChangeEventArgs e)
+    {
+        _text = e.Value?.ToString() ?? "";
+        await Parse();
+    }
+
+    private async Task OnBlur()
+    {
+        if (_error is null && _last is { } v) _text = Format(v);
+        await Task.CompletedTask;
+    }
+
+    private async Task Parse()
+    {
+        if (string.IsNullOrWhiteSpace(_text))
+        {
+            _error = Required ? L["err.amount.required"] : null;
+            _last = null;
+            await ValueChanged.InvokeAsync(null);
+            return;
+        }
+        if (!Fmt.TryParseAmount(_text, out var v))
+        {
+            _error = L["form.invalidNumber"];
+            return;
+        }
+        if (v < 0 && !AllowNegative)
+        {
+            _error = L["err.amount.negative"];
+            return;
+        }
+        _error = null;
+        _last = Math.Round(v, Decimals);
+        await ValueChanged.InvokeAsync(_last);
+    }
+}

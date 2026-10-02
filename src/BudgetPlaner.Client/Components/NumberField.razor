@@ -1,0 +1,19 @@
+@inject Loc L
+
+@* Zahlenfeld für Grenzwerte (Dezimalkomma oder -punkt). *@
+<div class="field">
+    <label for="@_id">@Label</label>
+    <input id="@_id" class="input amount" inputmode="decimal" autocomplete="off" value="@L.Num(Value, Decimals)" @onchange="OnChange" />
+</div>
+
+@code {
+    private readonly string _id = "num-" + Guid.NewGuid().ToString("N")[..6];
+
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public decimal Value { get; set; }
+    [Parameter] public EventCallback<decimal> ValueChanged { get; set; }
+    [Parameter] public int Decimals { get; set; } = 0;
+
+    private Task OnChange(ChangeEventArgs e) =>
+        Fmt.TryParseAmount(e.Value?.ToString()?.Replace('−', '-'), out var v) ? ValueChanged.InvokeAsync(v) : Task.CompletedTask;
+}

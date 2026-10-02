@@ -1,0 +1,138 @@
+@inherits AppComponent
+@inject BrowserJs Browser
+@inject AppStartup Startup
+
+@* Passkeys (B-15) und angemeldete Geräte. *@
+<section class="card" aria-labelledby="pf-security">
+    <div class="card-head"><h2 id="pf-security">@L["profile.security"]</h2></div>
+
+    <h3>@L["profile.passkeys"] <InfoTip Term="passkey" /></h3>
+    <p class="small muted">@L["profile.passkeysLead"]</p>
+    @if (!_passkeysSupported)
+    {
+        <p class="small muted">@L["profile.passkeyUnsupported"]</p>
+    }
+    @if (_passkeys is { Count: > 0 })
+    {
+        <ul class="list mb-1">
+            @foreach (var p in _passkeys)
+            {
+                var key = p;
+                <li class="list-row">
+                    <Icon Name="fingerprint" />
+                    <div class="grow">
+                        <div>@key.Name</div>
+                        <div class="small muted">@L.Date(DateOnly.FromDateTime(key.CreatedAt.LocalDateTime)) · @(key.LastUsedAt is { } lu ? L.T("profile.lastUsed", L.Ago(lu)) : L["profile.never"])</div>
+                    </div>
+                    <button class="icon-btn sm" aria-label="@L["action.delete"]" @onclick="() => DeletePasskeyAsync(key)"><Icon Name="trash" /></button>
+                </li>
+            }
+        </ul>
+    }
+    else if (_passkeys is not null)
+    {
+        <p class="small muted">@L["profile.noPasskeys"]</p>
+    }
+    @if (_passkeysSupported)
+    {
+        <form class="row" @onsubmit="AddPasskeyAsync" @onsubmit:preventDefault="true">
+            <label for="pk-name" class="sr-only">@L["profile.passkeyName"]</label>
+            <input id="pk-name" class="input" @bind="_passkeyName" maxlength="60" placeholder="@L["profile.passkeyName"]" style="flex:1;min-width:12rem" />
+            <button type="submit" class="btn" disabled="@_busy"><Icon Name="fingerprint" />@L["profile.addPasskey"]</button>
+        </form>
+    }
+
+    <hr />
+    <h3>@L["profile.sessions"]</h3>
+    @if (_sessions is null)
+    {
+        <div class="skeleton" style="height:4rem"></div>
+    }
+    else
+    {
+        <ul class="list">
+            @foreach (var s in _sessions.OrderByDescending(x => x.IsCurrent).ThenByDescending(x => x.LastUsedAt))
+            {
+                var session = s;
+                <li class="list-row">
+                    <Icon Name="@(session.DeviceName.Contains("iOS") || session.DeviceName.Contains("Android") ? "phone" : "monitor")" />
+                    <div class="grow">
+                        <div>@session.DeviceName @if (session.IsCurrent) { <span class="badge primary">@L["profile.thisDevice"]</span> }</div>
+                        <div class="small muted">@L.T("profile.since", L.Date(DateOnly.FromDateTime(session.CreatedAt.LocalDateTime))) · @L.T("profile.lastUsed", L.Ago(session.LastUsedAt))</div>
+                    </div>
+                    <button class="btn btn-sm" @onclick="() => RevokeAsync(session)">@L["profile.signOutDevice"]</button>
+                </li>
+            }
+        </ul>
+    }
+</section>
+
+@code {
+    private List<PasskeyDto>? _passkeys;
+    private List<SessionDto>? _sessions;
+    private bool _passkeysSupported, _busy;
+    private string _passkeyName = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { _passkeysSupported = await Browser.Call<bool>("passkeysSupported"); } catch (Exception) { }
+        try { _passkeyName = await Browser.Call<string>("deviceName"); } catch (Exception) { }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _passkeys = await Api.GetAsync<List<PasskeyDto>>("api/v1/me/passkeys");
+            _sessions = await Api.GetAsync<List<SessionDto>>("api/v1/me/sessions");
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private async Task AddPasskeyAsync()
+    {
+        _busy = true;
+        try
+        {
+            var options = await Api.PostAsync<PasskeyOptionsResponse>("api/v1/me/passkeys/options", null);
+            var attestation = await Browser.Call<string>("createPasskey", options.OptionsJson);
+            var name = string.IsNullOrWhiteSpace(_passkeyName) ? "Passkey" : _passkeyName.Trim();
+            await Api.PostAsync<PasskeyDto>("api/v1/me/passkeys", new PasskeyRegisterRequest(attestation, name));
+            Toasts.Success(L["profile.passkeyAdded"]);
+            await LoadAsync();
+        }
+        catch (Microsoft.JSInterop.JSException) { /* abgebrochen */ }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+
+    private async Task DeletePasskeyAsync(PasskeyDto key)
+    {
+        if (!await Confirm.AskAsync(L["action.delete"], key.Name, L["action.delete"], danger: true)) return;
+        try
+        {
+            await Api.DeleteAsync($"api/v1/me/passkeys/{key.Id}");
+            Toasts.Success(L["profile.passkeyRemoved"]);
+            await LoadAsync();
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private async Task RevokeAsync(SessionDto s)
+    {
+        if (s.IsCurrent)
+        {
+            await Startup.SignOutAsync();
+            Nav.NavigateTo("/login", replace: true);
+            return;
+        }
+        try
+        {
+            await Api.DeleteAsync($"api/v1/me/sessions/{s.Id}");
+            Toasts.Success(L["profile.sessionRevoked"]);
+            await LoadAsync();
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+}

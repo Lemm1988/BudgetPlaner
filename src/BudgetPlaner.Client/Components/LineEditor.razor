@@ -1,0 +1,29 @@
+@inject Loc L
+
+@* Liste aus Bezeichnung + Betrag (Einrichtungsassistent). *@
+<div class="stack-sm">
+    @for (var i = 0; i < Lines.Count; i++)
+    {
+        var line = Lines[i];
+        var idx = i;
+        <div class="line-editor-row">
+            <div class="field">
+                <label for="@($"{_id}-n{idx}")">@L["onboarding.name"]</label>
+                <input id="@($"{_id}-n{idx}")" class="input" value="@line.Name" placeholder="@NamePlaceholder" maxlength="120"
+                       @onchange="e => line.Name = e.Value?.ToString() ?? string.Empty" />
+            </div>
+            <AmountField Label="@L["onboarding.amount"]" Value="line.Amount" ValueChanged="v => line.Amount = v" Placeholder="0" />
+            <button type="button" class="icon-btn sm" aria-label="@L["action.delete"]" @onclick="() => Lines.RemoveAt(idx)" disabled="@(Lines.Count == 1 && !StartEmpty)"><Icon Name="x" /></button>
+        </div>
+    }
+    <div><button type="button" class="btn btn-sm" @onclick="() => Lines.Add(new OnboardingWizard.Line())"><Icon Name="plus" />@AddLabel</button></div>
+</div>
+
+@code {
+    private readonly string _id = "le-" + Guid.NewGuid().ToString("N")[..6];
+
+    [Parameter, EditorRequired] public List<OnboardingWizard.Line> Lines { get; set; } = [];
+    [Parameter] public string? NamePlaceholder { get; set; }
+    [Parameter] public string AddLabel { get; set; } = "";
+    [Parameter] public bool StartEmpty { get; set; }
+}

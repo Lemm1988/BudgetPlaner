@@ -1,0 +1,10 @@
+@page "/not-found"
+@layout PublicLayout
+@inject Loc L
+
+<PageTitle>@L["notFound.title"] · @L["app.name"]</PageTitle>
+<div class="page-narrow">
+    <EmptyState Icon="search" Title="@L["notFound.title"]" Text="@L["notFound.text"]">
+        <a class="btn btn-primary" href="/">@L["notFound.home"]</a>
+    </EmptyState>
+</div>

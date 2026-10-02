@@ -1,0 +1,94 @@
+@implements IDisposable
+@inject AppSession Session
+@inject AppStartup Startup
+@inject Loc L
+@inject UiState Ui
+@inject NavigationManager Nav
+
+<div class="menu-wrap">
+    <OutsideClick OnOutside="Close" Active="_open">
+        <button class="icon-btn" aria-label="@L["nav.userMenu"]" aria-expanded="@(_open ? "true" : "false")" aria-haspopup="menu" @onclick="Toggle">
+            <span class="avatar" aria-hidden="true">@Initials</span>
+        </button>
+        @if (_open)
+        {
+            <div class="menu" role="menu" @onkeydown="OnKey">
+                <div class="menu-head">
+                    <strong>@Session.User?.Name</strong><br />
+                    <span class="small">@Session.User?.Email</span>
+                </div>
+                <div class="sep"></div>
+                <a role="menuitem" href="/profil" @onclick="Close"><Icon Name="user" />@L["nav.profile"]</a>
+                <a role="menuitem" href="/haushalt" @onclick="Close"><Icon Name="family" />@L["nav.household"]</a>
+                <a role="menuitem" href="/daten" @onclick="Close"><Icon Name="download" />@L["nav.data"]</a>
+                <a role="menuitem" href="/verlauf" @onclick="Close"><Icon Name="history" />@L["nav.history"]</a>
+                <a role="menuitem" href="/hilfe" @onclick="Close"><Icon Name="help" />@L["nav.help"]</a>
+                <a role="menuitem" href="/rechner" @onclick="Close"><Icon Name="calculator" />@L["nav.calculators"]</a>
+                <div class="sep"></div>
+                <button role="menuitem" @onclick="CycleTheme"><Icon Name="@ThemeIcon" />@L["theme.label"]: @L["theme." + Ui.Theme]</button>
+                <button role="menuitem" @onclick="ToggleLanguage"><Icon Name="globe" />@(L.Lang == "de" ? "English" : "Deutsch")</button>
+                <div class="sep"></div>
+                <button role="menuitem" @onclick="Logout"><Icon Name="logout" />@L["auth.logout"]</button>
+            </div>
+        }
+    </OutsideClick>
+</div>
+
+@code {
+    private bool _open;
+
+    private string Initials
+    {
+        get
+        {
+            var name = Session.User?.Name ?? "?";
+            var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            return parts.Length >= 2 ? $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[1][0])}" : name.Length > 0 ? char.ToUpperInvariant(name[0]).ToString() : "?";
+        }
+    }
+
+    private string ThemeIcon => Ui.Theme switch { "dark" => "moon", "light" => "sun", _ => "monitor" };
+
+    protected override void OnInitialized()
+    {
+        Session.Changed += Refresh;
+        L.Changed += Refresh;
+    }
+
+    private void Toggle() => _open = !_open;
+
+    private void Close()
+    {
+        if (!_open) return;
+        _open = false;
+        StateHasChanged();
+    }
+
+    private void OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") Close();
+    }
+
+    private async Task CycleTheme()
+    {
+        var next = Ui.Theme switch { "system" => "light", "light" => "dark", _ => "system" };
+        await Startup.SetThemeAsync(next);
+    }
+
+    private async Task ToggleLanguage() => await L.SetAsync(L.Lang == "de" ? "en" : "de");
+
+    private async Task Logout()
+    {
+        _open = false;
+        await Startup.SignOutAsync();
+        Nav.NavigateTo("/login");
+    }
+
+    private void Refresh() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Session.Changed -= Refresh;
+        L.Changed -= Refresh;
+    }
+}

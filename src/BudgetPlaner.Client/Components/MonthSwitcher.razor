@@ -1,0 +1,31 @@
+@inherits AppComponent
+
+@* Monats-/Jahresnavigation (F-032): mindestens 12 Monate vor und zurück. *@
+<div class="row month-switch-wrap" style="gap:.35rem">
+    <div class="month-switch" role="group" aria-label="@L["month.navigation"]">
+        <button class="icon-btn" aria-label="@L["month.previous"]" disabled="@(!CanGo(-1))" @onclick="() => Go(-1)"><Icon Name="chevron-left" /></button>
+        <span class="label" aria-live="polite">@L.Period(Selected)</span>
+        <button class="icon-btn" aria-label="@L["month.next"]" disabled="@(!CanGo(1))" @onclick="() => Go(1)"><Icon Name="chevron-right" /></button>
+    </div>
+    @if (Selected != Current)
+    {
+        <button class="btn btn-sm btn-ghost" @onclick="Ui.ResetPeriod">@L["month.today"]</button>
+    }
+    @if (ShowRange)
+    {
+        <span class="small muted desktop-only">@L.DateShort(Ix.Calendar.Start(Selected)) – @L.DateShort(Ix.Calendar.End(Selected))</span>
+    }
+</div>
+
+@code {
+    /// <summary>Navigationsspanne in Monaten um den aktuellen Monat.</summary>
+    [Parameter] public int Range { get; set; } = 36;
+    [Parameter] public bool ShowRange { get; set; }
+
+    private bool CanGo(int delta) => Math.Abs(Period.MonthsBetween(Current, Selected.AddMonths(delta))) <= Range;
+
+    private void Go(int delta)
+    {
+        if (CanGo(delta)) Ui.SetPeriod(Selected.AddMonths(delta));
+    }
+}

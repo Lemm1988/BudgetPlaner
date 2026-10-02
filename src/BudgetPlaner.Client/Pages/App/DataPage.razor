@@ -1,0 +1,339 @@
+@page "/daten"
+@inherits AppComponent
+@inject BrowserJs Browser
+@using Microsoft.AspNetCore.Components.Forms
+
+<PageTitle>@L["nav.data"] · @L["app.name"]</PageTitle>
+
+<div class="page-narrow">
+    <div class="page-head">
+        <div>
+            <h1>@L["nav.data"]</h1>
+            <p class="lead">@L["data.lead"]</p>
+        </div>
+    </div>
+
+    <div class="stack">
+        <section class="card" aria-labelledby="dt-export">
+            <div class="card-head"><h2 id="dt-export">@L["data.export"]</h2></div>
+            <p class="small muted">@L["data.exportLead"]</p>
+            <form class="form-grid" @onsubmit="ExportAsync" @onsubmit:preventDefault="true">
+                <div class="field">
+                    <label for="ex-from">@L["data.from"]</label>
+                    <input id="ex-from" class="input" type="month" value="@_from" @onchange="e => { if (Period.TryParse(e.Value?.ToString(), out var p)) _from = p; }" />
+                </div>
+                <div class="field">
+                    <label for="ex-to">@L["data.to"]</label>
+                    <input id="ex-to" class="input" type="month" value="@_to" @onchange="e => { if (Period.TryParse(e.Value?.ToString(), out var p)) _to = p; }" />
+                </div>
+                <div class="field">
+                    <label for="ex-format">@L["data.format"]</label>
+                    <select id="ex-format" class="select" @bind="_format">
+                        <option value="xlsx">@L["data.formatXlsx"]</option>
+                        <option value="csv">@L["data.formatCsv"]</option>
+                        <option value="json">@L["data.formatJson"]</option>
+                    </select>
+                </div>
+                <div class="field" style="justify-content:flex-end">
+                    <button type="submit" class="btn btn-primary" disabled="@_busy"><Icon Name="download" />@L["data.download"]</button>
+                </div>
+            </form>
+            <p class="small muted mt-1 mb-0">@L["data.personal"] <a href="/profil">@L["nav.profile"]</a></p>
+        </section>
+
+        <section class="card" aria-labelledby="dt-import">
+            <div class="card-head"><h2 id="dt-import">@L["data.import"]</h2></div>
+            <p class="small muted">@L["data.importLead"]</p>
+            <div class="steps" aria-hidden="true">
+                @for (var i = 1; i <= 4; i++)
+                {
+                    <span class="@(i < _step ? "done" : i == _step ? "current" : "")"></span>
+                }
+            </div>
+            <p class="small"><strong>@L.T("data.stepOf", _step, 4, L["data.step." + StepKey])</strong></p>
+
+            @if (_step == 1)
+            {
+                <label class="btn" for="imp-file"><Icon Name="upload" />@L["data.chooseFile"]</label>
+                <InputFile id="imp-file" class="sr-only" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" OnChange="UploadAsync" />
+                <p class="small muted mt-1 mb-0">@L["data.fileHint"]</p>
+                @if (_busy)
+                {
+                    <p class="small mt-1" role="status"><span class="spinner" aria-hidden="true"></span> @L["data.uploading"]</p>
+                }
+            }
+            else if (_step == 2 && _preview is { } pv)
+            {
+                <p class="small muted">@pv.FileName · @L.T("data.rows", pv.RowCount)</p>
+                <div class="form-grid">
+                    <div class="field">
+                        <label for="imp-target">@L["data.target"]</label>
+                        <select id="imp-target" class="select" value="@_target" @onchange="e => SetTarget(e.Value?.ToString())">
+                            @foreach (var t in ImportFields.Fields.Keys)
+                            {
+                                <option value="@t">@L["import.target." + t]</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="field" style="justify-content:flex-end">
+                        <label class="check"><input type="checkbox" @bind="_header" />@L["data.firstRowHeader"]</label>
+                    </div>
+                </div>
+                <div class="table-wrap mt-2">
+                    <table class="table">
+                        <thead><tr><th scope="col">@L["data.field"]</th><th scope="col">@L["data.column"]</th></tr></thead>
+                        <tbody>
+                            @foreach (var field in ImportFields.Fields[_target])
+                            {
+                                var f = field;
+                                var required = ImportFields.Required[_target].Contains(f);
+                                <tr>
+                                    <th scope="row">@L["import.field." + f] @if (required) { <span class="badge">@L["data.required"]</span> }</th>
+                                    <td>
+                                        <label class="sr-only" for="map-@f">@L["import.field." + f]</label>
+                                        <select id="map-@f" class="select" value="@(_mapping.GetValueOrDefault(f, -1))" @onchange="e => SetMapping(f, e.Value?.ToString())">
+                                            <option value="-1">@L["data.notMapped"]</option>
+                                            @for (var i = 0; i < pv.Headers.Count; i++)
+                                            {
+                                                <option value="@i">@ColumnLabel(pv, i)</option>
+                                            }
+                                        </select>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <details class="mt-2">
+                    <summary class="small">@L["data.preview"]</summary>
+                    <div class="table-wrap mt-1">
+                        <table class="table">
+                            <thead><tr>@foreach (var h in pv.Headers) { <th scope="col">@h</th> }</tr></thead>
+                            <tbody>
+                                @foreach (var row in pv.SampleRows.Take(5))
+                                {
+                                    <tr>@foreach (var cell in row) { <td>@cell</td> }</tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </details>
+                @if (_error is not null)
+                {
+                    <p class="form-error mt-1" role="alert">@_error</p>
+                }
+                <div class="row mt-2">
+                    <button class="btn" @onclick="Restart">@L["data.back"]</button>
+                    <button class="btn btn-primary" @onclick="ValidateAsync" disabled="@_busy"><Icon Name="check" />@L["data.validate"]</button>
+                </div>
+            }
+            else if (_step == 3 && _validation is { } v)
+            {
+                <div class="row mb-1">
+                    <span class="badge good"><Icon Name="check" />@L.T("data.validCount", v.ValidCount)</span>
+                    @if (v.InvalidCount > 0)
+                    {
+                        <span class="badge bad"><Icon Name="alert" />@L.T("data.invalidCount", v.InvalidCount)</span>
+                        <label class="check small"><input type="checkbox" @bind="_onlyInvalid" />@L["data.showOnlyInvalid"]</label>
+                    }
+                </div>
+                @if (v.InvalidCount > 0)
+                {
+                    <p class="small muted">@L["data.invalidSkipped"]</p>
+                }
+                <div class="table-wrap" style="max-height:420px">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th scope="col">@L["data.row"]</th>
+                                <th scope="col">@L["data.skip"]</th>
+                                @foreach (var f in MappedFields)
+                                {
+                                    <th scope="col">@L["import.field." + f]</th>
+                                }
+                                <th scope="col">@L["data.errors"]</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var r in v.Rows.Where(r => !_onlyInvalid || !r.Valid).Take(500))
+                            {
+                                var row = r;
+                                <tr class="@(row.Valid ? "" : "invalid-row")">
+                                    <th scope="row">@row.RowNumber</th>
+                                    <td>
+                                        <input type="checkbox" class="table-check" checked="@(_skip.Contains(row.RowNumber) || !row.Valid)" disabled="@(!row.Valid)"
+                                               aria-label="@($"{L["data.skip"]} {row.RowNumber}")" @onchange="e => ToggleSkip(row.RowNumber, e.Value is true)" />
+                                    </td>
+                                    @foreach (var f in MappedFields)
+                                    {
+                                        <td>@row.Values.GetValueOrDefault(f)</td>
+                                    }
+                                    <td class="small">
+                                        @foreach (var err in row.Errors)
+                                        {
+                                            <div class="@(row.Valid ? "muted" : "neg")">@ErrorText(err)</div>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="row mt-2">
+                    <button class="btn" @onclick="() => _step = 2">@L["data.back"]</button>
+                    <button class="btn btn-primary" @onclick="CommitAsync" disabled="@(_busy || ImportCount == 0)"><Icon Name="upload" />@L.T("data.doImport", ImportCount)</button>
+                </div>
+            }
+            else if (_step == 4 && _result is { } res)
+            {
+                <div class="notice good"><Icon Name="check-circle" /><div>@L.T("data.imported", res.Imported, res.Skipped)</div></div>
+                <div class="row mt-2">
+                    <button class="btn" @onclick="Restart"><Icon Name="upload" />@L["data.restart"]</button>
+                    <a class="btn btn-primary" href="@ResultLink">@L["action.open"]</a>
+                </div>
+            }
+        </section>
+    </div>
+</div>
+
+@code {
+    private Period _from, _to;
+    private string _format = "xlsx";
+    private bool _busy, _header = true, _onlyInvalid;
+    private int _step = 1;
+    private string _target = ImportFields.TargetEntries;
+    private string? _error;
+    private ImportPreviewResponse? _preview;
+    private ImportValidationResponse? _validation;
+    private ImportCommitResponse? _result;
+    private Dictionary<string, int> _mapping = [];
+    private readonly HashSet<int> _skip = [];
+
+    private string StepKey => _step switch { 1 => "upload", 2 => "mapping", 3 => "check", _ => "done" };
+
+    private IEnumerable<string> MappedFields => ImportFields.Fields[_target].Where(f => _mapping.GetValueOrDefault(f, -1) >= 0);
+
+    private int ImportCount => _validation is null ? 0 : _validation.Rows.Count(r => r.Valid && !_skip.Contains(r.RowNumber));
+
+    private string ResultLink => _target switch { ImportFields.TargetDebts => "/schulden", ImportFields.TargetBuffers => "/polster", _ => "/budget" };
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        _to = Current;
+        _from = Current.AddMonths(-11);
+    }
+
+    private async Task ExportAsync()
+    {
+        if (_to < _from) (_from, _to) = (_to, _from);
+        _busy = true;
+        try
+        {
+            var token = await Session.GetAccessTokenAsync();
+            var ext = _format == "csv" ? "zip" : _format;
+            await Browser.Run("downloadWithAuth", $"/api/v1/export?from={_from}&to={_to}&format={_format}", token, $"budgetplaner-{_from}-{_to}.{ext}");
+            Toasts.Success(L["data.exported"]);
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+
+    private async Task UploadAsync(InputFileChangeEventArgs e)
+    {
+        _error = null;
+        var file = e.File;
+        if (file.Size > 10_000_000) { Toasts.Error(L["err.import.empty"]); return; }
+        _busy = true;
+        try
+        {
+            await using var stream = file.OpenReadStream(10_000_000);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            buffer.Position = 0;
+            _preview = await Api.UploadAsync<ImportPreviewResponse>("api/v1/import/preview", buffer, file.Name);
+            _target = ImportFields.Fields.ContainsKey(_preview.SuggestedTarget) ? _preview.SuggestedTarget : ImportFields.TargetEntries;
+            _mapping = new Dictionary<string, int>(_preview.SuggestedMapping);
+            _step = 2;
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+
+    private void SetTarget(string? target)
+    {
+        if (target is null || !ImportFields.Fields.ContainsKey(target)) return;
+        _target = target;
+        // Gleichnamige Felder behalten, übrige entfernen
+        _mapping = _mapping.Where(kv => ImportFields.Fields[target].Contains(kv.Key)).ToDictionary();
+    }
+
+    private void SetMapping(string field, string? value)
+    {
+        if (int.TryParse(value, out var col) && col >= 0) _mapping[field] = col;
+        else _mapping.Remove(field);
+    }
+
+    private string ColumnLabel(ImportPreviewResponse pv, int i)
+    {
+        var header = string.IsNullOrWhiteSpace(pv.Headers[i]) ? $"#{i + 1}" : pv.Headers[i];
+        var sample = pv.SampleRows.FirstOrDefault()?.ElementAtOrDefault(i);
+        return string.IsNullOrWhiteSpace(sample) || !_header ? header : $"{header} ({sample})";
+    }
+
+    private ImportMappingRequest MappingRequest() => new(_preview!.ImportId, _target, _mapping.Where(kv => kv.Value >= 0).ToDictionary(), _header);
+
+    private async Task ValidateAsync()
+    {
+        _error = null;
+        var missing = ImportFields.Required[_target].Where(f => _mapping.GetValueOrDefault(f, -1) < 0).Select(f => L["import.field." + f]).ToList();
+        if (missing.Count > 0) { _error = L.T("err.import.mapping", string.Join(", ", missing)); return; }
+        _busy = true;
+        try
+        {
+            _validation = await Api.PostAsync<ImportValidationResponse>("api/v1/import/validate", MappingRequest());
+            _skip.Clear();
+            _step = 3;
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+
+    private void ToggleSkip(int row, bool skip)
+    {
+        if (skip) _skip.Add(row); else _skip.Remove(row);
+    }
+
+    private async Task CommitAsync()
+    {
+        if (_validation is null) return;
+        _busy = true;
+        try
+        {
+            var skip = _validation.Rows.Where(r => !r.Valid || _skip.Contains(r.RowNumber)).Select(r => r.RowNumber).ToList();
+            _result = await Api.PostAsync<ImportCommitResponse>("api/v1/import/commit", new ImportCommitRequest(MappingRequest(), skip));
+            await Sync.SyncNowAsync();
+            _step = 4;
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+
+    private void Restart()
+    {
+        _step = 1;
+        _preview = null;
+        _validation = null;
+        _result = null;
+        _mapping = [];
+        _skip.Clear();
+        _error = null;
+    }
+
+    /// <summary>Fehler kommen als „schlüssel|argument“ oder als Klartext vom Server.</summary>
+    private string ErrorText(string error)
+    {
+        var parts = error.Split('|', 2);
+        return L.Has(parts[0]) ? L.T(parts[0], parts.Length > 1 ? parts[1] : "") : error;
+    }
+}

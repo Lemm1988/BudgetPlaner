@@ -1,0 +1,19 @@
+@inject Loc L
+@inject AppSession Session
+@inject ApiClient Api
+
+@* Sprachumschalter DE/EN mit einem Klick (BudgetHeld 1.2); angemeldet wird die Wahl im Profil gespeichert (E-Mails, Push). *@
+<button class="btn btn-ghost btn-sm" @onclick="Toggle" aria-label="@L["language.switch"]" title="@L["language.switch"]">
+    <Icon Name="globe" /><span>@(L.Lang == "de" ? "EN" : "DE")</span>
+</button>
+
+@code {
+    private async Task Toggle()
+    {
+        var lang = L.Lang == "de" ? "en" : "de";
+        await L.SetAsync(lang);
+        if (!Session.IsAuthenticated) return;
+        try { await Session.UpdateUserAsync(await Api.PatchAsync<UserDto>("api/v1/me", new ProfileUpdate(null, lang, null, null))); }
+        catch (Exception) { /* offline: die Wahl gilt lokal und wird beim nächsten Speichern übernommen */ }
+    }
+}

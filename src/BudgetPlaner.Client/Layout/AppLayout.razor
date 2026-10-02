@@ -1,0 +1,175 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject AppSession Session
+@inject DataStore Store
+@inject Loc L
+@inject UiState Ui
+@inject NavigationManager Nav
+@inject AppStartup Startup
+@inject SyncClient Sync
+@inject BrowserJs Browser
+
+@if (!Session.IsAuthenticated)
+{
+    <div class="boot"><span class="spinner" aria-hidden="true"></span></div>
+}
+else
+{
+    <div class="app">
+        <a class="skip-link" href="#main">@L["nav.skip"]</a>
+        <header class="app-header">
+            <a class="brand" href="/uebersicht" aria-label="@L["app.name"] – @L["nav.overview"]">
+                <span class="brand-mark"><Icon Name="logo" /></span>
+                <span class="desktop-only">@L["app.name"]</span>
+            </a>
+            <div class="header-spacer"></div>
+            <div class="header-actions">
+                <SyncIndicator />
+                <a class="icon-btn mobile-only" href="/statistik" aria-label="@L["nav.statistics"]" title="@L["nav.statistics"]"><Icon Name="bars" /></a>
+                <a class="icon-btn mobile-only" href="/prognosen" aria-label="@L["nav.forecasts"]" title="@L["nav.forecasts"]"><Icon Name="forecast" /></a>
+                <NotificationBell />
+                <UserMenu />
+            </div>
+        </header>
+
+        @if (!Sync.IsOnline)
+        {
+            <div class="banner offline" role="status">
+                <Icon Name="cloud-off" />
+                <span>@L["sync.offlineBanner"]</span>
+                @if (Store.PendingCount > 0)
+                {
+                    <span class="badge warn">@L.T("sync.pending", Store.PendingCount)</span>
+                }
+            </div>
+        }
+        @if (Startup.UpdateAvailable)
+        {
+            <div class="banner info" role="status">
+                <Icon Name="sparkles" />
+                <span>@L["pwa.updateAvailable"]</span>
+                <button class="btn btn-sm btn-primary" @onclick="ApplyUpdate">@L["pwa.reload"]</button>
+            </div>
+        }
+
+        <div class="app-body">
+            <nav class="sidebar" aria-label="@L["nav.main"]">
+                <NavLink class="nav-link" href="/uebersicht"><Icon Name="overview" />@L["nav.overview"]</NavLink>
+                <NavLink class="nav-link" href="/budget"><Icon Name="wallet" />@L["nav.budget"]</NavLink>
+                <NavLink class="nav-link" href="/schulden"><Icon Name="debt" />@L["nav.debts"]</NavLink>
+                <NavLink class="nav-link" href="/cashflow"><Icon Name="calendar" />@L["nav.cashflow"]</NavLink>
+                <NavLink class="nav-link" href="/polster"><Icon Name="piggy" />@L["nav.buffers"]</NavLink>
+                <NavLink class="nav-link" href="/statistik"><Icon Name="bars" />@L["nav.statistics"]</NavLink>
+                <NavLink class="nav-link" href="/prognosen"><Icon Name="forecast" />@L["nav.forecasts"]</NavLink>
+                <div class="nav-section">@L["nav.section.household"]</div>
+                <NavLink class="nav-link" href="/haushalt"><Icon Name="family" />@L["nav.household"]</NavLink>
+                <NavLink class="nav-link" href="/benachrichtigungen"><Icon Name="bell" />@L["nav.notifications"]</NavLink>
+                <NavLink class="nav-link" href="/daten"><Icon Name="download" />@L["nav.data"]</NavLink>
+                <NavLink class="nav-link" href="/verlauf"><Icon Name="history" />@L["nav.history"]</NavLink>
+                <div class="nav-section">@L["nav.section.more"]</div>
+                <NavLink class="nav-link" href="/hilfe"><Icon Name="help" />@L["nav.help"]</NavLink>
+                <NavLink class="nav-link" href="/rechner"><Icon Name="calculator" />@L["nav.calculators"]</NavLink>
+                <NavLink class="nav-link" href="/profil"><Icon Name="user" />@L["nav.profile"]</NavLink>
+            </nav>
+            <main id="main" class="main" tabindex="-1">
+                <ErrorBoundary @ref="_boundary">
+                    <ChildContent>@Body</ChildContent>
+                    <ErrorContent Context="ex">
+                        <div class="page-narrow">
+                            <div class="notice bad" role="alert">
+                                <Icon Name="alert" />
+                                <div>
+                                    <strong>@L["error.page"]</strong>
+                                    <p class="small">@ex.Message</p>
+                                    <button class="btn btn-sm" @onclick="Recover">@L["action.retry"]</button>
+                                </div>
+                            </div>
+                        </div>
+                    </ErrorContent>
+                </ErrorBoundary>
+            </main>
+        </div>
+
+        <nav class="tabbar" aria-label="@L["nav.main"]">
+            <NavLink class="tab" href="/uebersicht"><Icon Name="overview" /><span>@L["nav.overview"]</span></NavLink>
+            <NavLink class="tab" href="/budget"><Icon Name="wallet" /><span>@L["nav.budget"]</span></NavLink>
+            <NavLink class="tab" href="/schulden"><Icon Name="debt" /><span>@L["nav.debts"]</span></NavLink>
+            <NavLink class="tab" href="/cashflow"><Icon Name="calendar" /><span>@L["nav.cashflow"]</span></NavLink>
+            <NavLink class="tab" href="/polster"><Icon Name="piggy" /><span>@L["nav.buffers"]</span></NavLink>
+        </nav>
+
+        @if (ShowOnboarding)
+        {
+            <OnboardingWizard OnClose="CloseOnboarding" />
+        }
+    </div>
+}
+<ToastHost />
+<ConfirmHost />
+
+@code {
+    private ErrorBoundary? _boundary;
+    private bool _onboardingDismissed;
+
+    private bool ShowOnboarding =>
+        Ui.ShowOnboarding
+        || (!_onboardingDismissed && Store.IsLoaded && Store.Data.Household.OnboardingCompletedAt is null
+            && Store.Data.Entries.Count == 0 && Store.Seq > 0 && Store.Data.Debts.Count == 0 && Store.Data.Buffers.Count == 0);
+
+    protected override void OnInitialized()
+    {
+        Session.Changed += OnSession;
+        Store.Changed += Refresh;
+        L.Changed += Refresh;
+        Ui.Changed += Refresh;
+        Sync.StatusChanged += Refresh;
+        Startup.PwaChanged += Refresh;
+        Nav.LocationChanged += OnLocationChanged;
+        if (!Session.IsAuthenticated) RedirectToLogin();
+    }
+
+    protected override void OnParametersSet() => _boundary?.Recover();
+
+    private void OnSession()
+    {
+        if (!Session.IsAuthenticated) RedirectToLogin();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void RedirectToLogin()
+    {
+        var path = "/" + Nav.ToBaseRelativePath(Nav.Uri);
+        Nav.NavigateTo($"/login?returnUrl={Uri.EscapeDataString(path)}", replace: true);
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) => _ = Browser.Run("scrollToTarget");
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && Nav.Uri.Contains('#')) await Browser.Run("scrollToTarget");
+    }
+
+    private void Refresh() => _ = InvokeAsync(StateHasChanged);
+
+    private void Recover() => _boundary?.Recover();
+
+    private async Task ApplyUpdate() => await Browser.Run("applyUpdate");
+
+    private void CloseOnboarding()
+    {
+        _onboardingDismissed = true;
+        Ui.ShowOnboarding = false;
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        Session.Changed -= OnSession;
+        Store.Changed -= Refresh;
+        L.Changed -= Refresh;
+        Ui.Changed -= Refresh;
+        Sync.StatusChanged -= Refresh;
+        Startup.PwaChanged -= Refresh;
+        Nav.LocationChanged -= OnLocationChanged;
+    }
+}

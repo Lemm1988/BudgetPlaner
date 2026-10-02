@@ -1,0 +1,12 @@
+@page "/glossar"
+@layout PublicLayout
+@inject Loc L
+
+<PageTitle>@L["glossary.title"] · @L["app.name"]</PageTitle>
+
+<div class="page-narrow" style="padding:1.5rem 0 3rem">
+    <h1>@L["glossary.title"]</h1>
+    <p class="lead muted">@L.T("glossary.lead", GlossaryList.AllTerms(L).Count())</p>
+    <GlossaryList />
+    <p class="mt-3"><a href="#main">@L["glossary.backToTop"]</a></p>
+</div>

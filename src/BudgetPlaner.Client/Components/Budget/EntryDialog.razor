@@ -1,0 +1,266 @@
+@inherits AppComponent
+
+@* Position anlegen/bearbeiten (F-010, F-011, F-013) inkl. Delta-Editing „nur dieser / ab diesem Monat“ (B-03). Komplett per Tastatur bedienbar (F-120). *@
+<Modal Title="@(_isNew ? L["entry.newTitle"] : L["entry.editTitle"])" OnClose="OnClose">
+    <ChildContent>
+        <form id="entry-form" @onsubmit="SaveAsync" @onsubmit:preventDefault="true" class="stack">
+            @if (_isNew)
+            {
+                <fieldset>
+                    <legend>@L["entry.kind"]</legend>
+                    <div class="segmented" role="radiogroup">
+                        @foreach (var k in new[] { EntryKind.Income, EntryKind.Expense, EntryKind.Allocation })
+                        {
+                            <label>
+                                <input type="radio" name="kind" checked="@(_e.Kind == k)" @onchange="() => SetKind(k)" />
+                                <span>@L.Of(k)</span>
+                            </label>
+                        }
+                    </div>
+                </fieldset>
+            }
+            <div class="form-grid">
+                <div class="field full">
+                    <label for="entry-name">@L["entry.name"] <span aria-hidden="true">*</span></label>
+                    <input id="entry-name" class="input" @bind="_e.Name" @bind:event="oninput" required maxlength="120"
+                           placeholder="@NamePlaceholder" aria-invalid="@(_nameError ? "true" : "false")" />
+                    @if (_nameError) { <span class="error" role="alert">@L["err.name.required"]</span> }
+                </div>
+                <AmountField Label="@(_isNew ? L["entry.amount"] : L.T("entry.amountIn", L.Period(Period)))" Value="_amount" ValueChanged="v => _amount = v" Required="true" />
+                @if (_e.Kind == EntryKind.Allocation)
+                {
+                    <div class="field">
+                        <label for="entry-buffer">@L["entry.buffer"] <span aria-hidden="true">*</span></label>
+                        <select id="entry-buffer" class="select" @bind="BufferValue" required>
+                            <option value="">@L["entry.chooseBuffer"]</option>
+                            @foreach (var b in Ix.Buffers)
+                            {
+                                <option value="@b.Id">@b.Name</option>
+                            }
+                        </select>
+                        @if (Ix.Buffers.Count == 0)
+                        {
+                            <span class="hint">@L["entry.noBuffers"] <a href="/polster">@L["nav.buffers"]</a></span>
+                        }
+                    </div>
+                }
+                <div class="field">
+                    <label for="entry-category">@L["entry.category"]</label>
+                    <select id="entry-category" class="select" @bind="CategoryValue">
+                        @foreach (var root in Roots)
+                        {
+                            <optgroup label="@L.Cat(root)">
+                                <option value="@root.Id">@L.Cat(root) – @L["entry.general"]</option>
+                                @foreach (var child in Ix.Categories.Where(c => c.ParentId == root.Id))
+                                {
+                                    <option value="@child.Id">@L.Cat(child)</option>
+                                }
+                            </optgroup>
+                        }
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="entry-rhythm">@L["entry.rhythm"] <InfoTip Term="rhythmus" /></label>
+                    <select id="entry-rhythm" class="select" @bind="_e.Rhythm">
+                        @foreach (var r in new[] { Rhythm.Monthly, Rhythm.BiMonthly, Rhythm.Quarterly, Rhythm.HalfYearly, Rhythm.Yearly, Rhythm.Once })
+                        {
+                            <option value="@r">@L.Of(r)</option>
+                        }
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="entry-day">@L["entry.debitDay"] <InfoTip Term="abbuchungstag" /></label>
+                    <select id="entry-day" class="select" @bind="DayValue">
+                        <option value="">@L["entry.noDay"]</option>
+                        @for (var d = 1; d <= 31; d++)
+                        {
+                            <option value="@d">@L.T("budget.dayOfMonth", d)</option>
+                        }
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="entry-start">@(_e.Rhythm == Rhythm.Once ? L["entry.dueMonth"] : L["entry.start"])</label>
+                    <input id="entry-start" class="input" type="month" value="@_e.StartPeriod" @onchange="e => SetStart(e.Value?.ToString())" />
+                    @if (_e.Rhythm is not Rhythm.Monthly and not Rhythm.Once)
+                    {
+                        <span class="hint">@L["entry.startHintRhythm"]</span>
+                    }
+                </div>
+                @if (_e.Rhythm != Rhythm.Once)
+                {
+                    <div class="field">
+                        <label for="entry-end">@L["entry.end"]</label>
+                        <input id="entry-end" class="input" type="month" value="@(_e.EndPeriod?.ToString() ?? "")" @onchange="e => SetEnd(e.Value?.ToString())" />
+                        <span class="hint">@L["entry.endHint"]</span>
+                    </div>
+                }
+                @if (_e.Kind == EntryKind.Expense)
+                {
+                    <div class="field full">
+                        <label class="check"><input type="checkbox" @bind="_e.IsFixed" />@L["entry.isFixed"] <InfoTip Term="fixkosten" /></label>
+                    </div>
+                }
+                @if (_e.Kind == EntryKind.Expense && Ix.Debts.Count > 0)
+                {
+                    <div class="field">
+                        <label for="entry-debt">@L["entry.linkDebt"]</label>
+                        <select id="entry-debt" class="select" @bind="DebtValue">
+                            <option value="">@L["entry.noDebt"]</option>
+                            @foreach (var d in Ix.Debts)
+                            {
+                                <option value="@d.Id">@d.Name</option>
+                            }
+                        </select>
+                    </div>
+                    @if (_e.DebtId is not null)
+                    {
+                        <div class="field">
+                            <label for="entry-debtrole">@L["entry.debtRole"]</label>
+                            <select id="entry-debtrole" class="select" @bind="_e.DebtRole">
+                                <option value="@DebtRole.Rate">@L["budget.loan"]</option>
+                                <option value="@DebtRole.Extra">@L["budget.extraPayment"]</option>
+                            </select>
+                        </div>
+                    }
+                }
+                <div class="field full">
+                    <label for="entry-note">@L["entry.note"]</label>
+                    <textarea id="entry-note" class="textarea" @bind="_e.Note" maxlength="500"></textarea>
+                </div>
+            </div>
+
+            @if (ShowScope)
+            {
+                <fieldset class="card soft flat">
+                    <legend>@L["entry.scopeTitle"]</legend>
+                    <label class="check"><input type="radio" name="scope" checked="@(_scope == EditScope.FromMonth)" @onchange="() => _scope = EditScope.FromMonth" />@L.T("entry.scopeFrom", L.Period(Period))</label>
+                    <label class="check"><input type="radio" name="scope" checked="@(_scope == EditScope.ThisMonth)" @onchange="() => _scope = EditScope.ThisMonth" />@L.T("entry.scopeThis", L.Period(Period))</label>
+                    <label class="check"><input type="radio" name="scope" checked="@(_scope == EditScope.All)" @onchange="() => _scope = EditScope.All" />@L["entry.scopeAll"]</label>
+                </fieldset>
+            }
+            @if (_error is not null)
+            {
+                <p class="form-error" role="alert">@_error</p>
+            }
+        </form>
+    </ChildContent>
+    <Footer>
+        @if (!_isNew)
+        {
+            <button type="button" class="btn btn-ghost left" style="color:var(--bad)" @onclick="DeleteAsync"><Icon Name="trash" />@L["action.delete"]</button>
+        }
+        <button type="button" class="btn" @onclick="OnClose">@L["action.cancel"]</button>
+        <button type="submit" form="entry-form" class="btn btn-primary"><Icon Name="check" />@L["action.save"]</button>
+    </Footer>
+</Modal>
+
+@code {
+    private BudgetEntry _e = new();
+    private decimal? _amount;
+    private decimal _originalAmount;
+    private bool _isNew;
+    private bool _nameError;
+    private string? _error;
+    private EditScope _scope = EditScope.FromMonth;
+
+    [Parameter, EditorRequired] public BudgetEntry Entry { get; set; } = default!;
+    [Parameter] public Period Period { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    // Nur beim Öffnen initialisieren: OnParametersSet liefe bei jedem Neu-Rendern der Seite (z. B. Sync) und würde Eingaben verwerfen.
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        _e = Entry.CloneAs<BudgetEntry>();
+        _isNew = Store.Find<BudgetEntry>(Entry.Id) is null;
+        _originalAmount = _isNew ? Entry.Amount : Act.NominalAmount(Entry, Period);
+        _amount = _isNew && Entry.Amount == 0 ? null : _originalAmount;
+    }
+
+    private IEnumerable<Category> Roots => Ix.Categories.Where(c => c.ParentId is null &&
+        c.Type == (_e.Kind == EntryKind.Income ? CategoryType.Income : CategoryType.Expense));
+
+    private bool ShowScope => !_isNew && _amount is { } a && a != _originalAmount && Act.HasHistoryBefore(Entry, Period);
+
+    private string NamePlaceholder => _e.Kind switch
+    {
+        EntryKind.Income => L["entry.placeholder.income"],
+        EntryKind.Allocation => L["entry.placeholder.allocation"],
+        _ => L["entry.placeholder.expense"],
+    };
+
+    private string CategoryValue
+    {
+        get => _e.CategoryId.ToString();
+        set { if (Guid.TryParse(value, out var g)) _e.CategoryId = g; }
+    }
+
+    private string BufferValue
+    {
+        get => _e.BufferId?.ToString() ?? "";
+        set
+        {
+            _e.BufferId = Guid.TryParse(value, out var g) ? g : null;
+            if (_e.BufferId is { } b && string.IsNullOrWhiteSpace(_e.Name)) _e.Name = Ix.BufferById.GetValueOrDefault(b)?.Name ?? "";
+        }
+    }
+
+    private string DebtValue
+    {
+        get => _e.DebtId?.ToString() ?? "";
+        set
+        {
+            _e.DebtId = Guid.TryParse(value, out var g) ? g : null;
+            _e.DebtRole = _e.DebtId is null ? DebtRole.None : _e.DebtRole == DebtRole.None ? DebtRole.Rate : _e.DebtRole;
+        }
+    }
+
+    private string DayValue
+    {
+        get => _e.DebitDay?.ToString() ?? "";
+        set => _e.DebitDay = int.TryParse(value, out var d) ? d : null;
+    }
+
+    private void SetKind(EntryKind kind)
+    {
+        _e.Kind = kind;
+        var type = kind == EntryKind.Income ? CategoryType.Income : CategoryType.Expense;
+        if (Ix.CategoryById.GetValueOrDefault(_e.CategoryId)?.Type != type)
+        {
+            var key = kind switch { EntryKind.Income => "salary", EntryKind.Allocation => "saving", _ => "living" };
+            _e.CategoryId = (Ix.Categories.FirstOrDefault(c => c.DefaultKey == key) ?? Ix.Categories.First(c => c.Type == type)).Id;
+        }
+        _e.IsFixed = kind == EntryKind.Income;
+        if (kind != EntryKind.Allocation) _e.BufferId = null;
+    }
+
+    private void SetStart(string? value)
+    {
+        if (Period.TryParse(value, out var p)) _e.StartPeriod = p;
+    }
+
+    private void SetEnd(string? value) => _e.EndPeriod = Period.TryParse(value, out var p) ? p : null;
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        _nameError = string.IsNullOrWhiteSpace(_e.Name);
+        if (_nameError) return;
+        if (_amount is not { } amount) { _error = L["err.amount.required"]; return; }
+        if (_e.Kind == EntryKind.Allocation && _e.BufferId is null) { _error = L["err.buffer.invalid"]; return; }
+        if (_e.EndPeriod is { } end && end < _e.StartPeriod) { _error = L["err.entry.period"]; return; }
+        _e.Name = _e.Name.Trim();
+        await Act.SaveEntryAsync(_e, amount, Period, ShowScope ? _scope : EditScope.FromMonth);
+        Toasts.Success(_isNew ? L.T("entry.created", _e.Name) : L["entry.saved"]);
+        await OnSaved.InvokeAsync();
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (!await Confirm.AskAsync(L["budget.deleteTitle"], L.T("budget.deleteText", Entry.Name), L["action.delete"], danger: true)) return;
+        await Act.DeleteEntryAsync(Entry);
+        await OnClose.InvokeAsync();
+    }
+}

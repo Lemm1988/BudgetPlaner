@@ -1,0 +1,161 @@
+@page "/schulden"
+@inherits AppComponent
+@using BudgetPlaner.Client.Components.Debts
+
+<PageTitle>@L["nav.debts"] · @L["app.name"]</PageTitle>
+
+<KpiBar />
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h1>@L["nav.debts"]</h1>
+            <p class="lead">@L["debts.lead"]</p>
+        </div>
+        <div class="page-actions">
+            @if (Ix.Debts.Count > 0)
+            {
+                <a class="btn" href="/schulden#strategien"><Icon Name="scale" />@L["debts.compare"]</a>
+            }
+            <button class="btn btn-primary" @onclick="() => _editing = true"><Icon Name="plus" />@L["debts.new"]</button>
+        </div>
+    </div>
+
+    @if (!Store.IsLoaded)
+    {
+        <div class="card"><div class="skeleton" style="height:8rem"></div></div>
+    }
+    else if (Ix.Debts.Count == 0)
+    {
+        <div class="card">
+            <EmptyState Icon="debt" Title="@L["debts.emptyTitle"]" Text="@L["debts.emptyText"]">
+                <button class="btn btn-primary" @onclick="() => _editing = true"><Icon Name="plus" />@L["debts.new"]</button>
+            </EmptyState>
+        </div>
+    }
+    else
+    {
+        var summary = Engine.Forecasts.DebtFree();
+        var all = Engine.Debts.All();
+        var open = all.Where(s => !s.IsPaidOff).OrderBy(s => s.Debt.SortIndex).ThenBy(s => s.Debt.Name).ToList();
+        var paid = all.Where(s => s.IsPaidOff).ToList();
+
+        <section class="card mb-2" aria-labelledby="debt-summary">
+            <div class="card-head">
+                <h2 id="debt-summary">@L["debts.summary"]</h2>
+                <AmpelBadge Item="Engine.Ampel.Debts(Current)" Label="@L["ampel.debts"]" ShowLabel="true" AlignRight="true" />
+            </div>
+            <div class="grid grid-4" style="gap:.75rem">
+                <div class="stat">
+                    <span class="stat-label">@L["debt.totalBalance"] <InfoTip Term="restschuld" /></span>
+                    <span class="stat-value">@L.Money(Engine.Debts.TotalBalance)</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">@L["debts.monthlyBurden"] <InfoTip Term="schuldendienst" /></span>
+                    <span class="stat-value sm">@L.Money(open.Sum(s => s.CurrentMonthlyPayment))</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">@L["debts.debtFree"]</span>
+                    @if (open.Count == 0)
+                    {
+                        <span class="stat-value sm pos">@L["debt.allPaid"]</span>
+                    }
+                    else if (summary.Possible && summary.PayoffPeriod is { } pp)
+                    {
+                        <span class="stat-value sm">@L.Period(pp)</span>
+                        <span class="stat-hint">@L.T("debts.debtFreeIn", L.Duration(Period.MonthsBetween(Current, pp), dative: true))</span>
+                    }
+                    else
+                    {
+                        <span class="stat-value sm neg">@L["debts.notForeseeable"]</span>
+                    }
+                </div>
+                <div class="stat">
+                    <span class="stat-label">@L["debts.remainingInterest"]</span>
+                    <span class="stat-value sm">@(summary.Possible ? L.Money(summary.TotalInterest) : "–")</span>
+                </div>
+            </div>
+            <div class="mt-2">
+                <div class="row-between small"><span class="muted">@L["debt.progress"]</span><strong>@L.Pct(Engine.Debts.TotalProgressPercent, 0)</strong></div>
+                <ProgressBar Percent="Engine.Debts.TotalProgressPercent" Label="@L["debt.progress"]" Large="true" Variant="good" />
+            </div>
+        </section>
+
+        <h2 class="h3">@L["debts.open"]</h2>
+        <div class="grid grid-2 mb-2">
+            @foreach (var s in open)
+            {
+                var f = Engine.Debts.Forecast(s.Debt.Id);
+                <a class="card link" href="/schulden/@s.Debt.Id">
+                    <div class="card-head">
+                        <h3 class="truncate"><Icon Name="@TypeIcon(s.Debt.Type)" />@s.Debt.Name</h3>
+                        <span class="badge">@L.Of(s.Debt.Type)</span>
+                    </div>
+                    <div class="row-between">
+                        <div class="stat">
+                            <span class="stat-label">@L["debt.balance"]</span>
+                            <span class="stat-value sm">@L.Money(s.Balance)</span>
+                        </div>
+                        <div class="stat right">
+                            <span class="stat-label" style="justify-content:flex-end">@L["debt.payoff"]</span>
+                            <span class="stat-value sm @(f.Possible ? "" : "neg")">@(f.Possible && f.PayoffPeriod is { } fp ? L.Period(fp) : L["debt.payoffUnknown"])</span>
+                        </div>
+                    </div>
+                    <div class="mt-1">
+                        <ProgressBar Percent="s.ProgressPercent" Label="@L["debt.progress"]" Variant="good" />
+                        <div class="row-between small muted mt-1">
+                            <span>@(s.CurrentMonthlyPayment > 0 ? L.T("debts.perMonth", L.Money(s.CurrentMonthlyPayment)) : L["debts.noRate"])</span>
+                            <span>@(s.Debt.InterestRate is > 0 ? L.T("debt.ratePa", L.Pct(s.Debt.InterestRate, 2)) : L["debt.interestFree"])</span>
+                            <span>@L.T("debts.percentRepaid", L.Pct(s.ProgressPercent, 0))</span>
+                        </div>
+                    </div>
+                    @if (s.RateBelowInterest)
+                    {
+                        <p class="small neg mt-1 mb-0"><Icon Name="alert" /> @L["debts.rateBelowInterest"]</p>
+                    }
+                </a>
+            }
+        </div>
+
+        @if (open.Count > 0)
+        {
+            <StrategyCompare />
+        }
+
+        @if (paid.Count > 0)
+        {
+            <h2 class="h3 mt-3">@L["debts.paidOffSection"]</h2>
+            <ul class="list card">
+                @foreach (var s in paid)
+                {
+                    <li class="list-row">
+                        <Icon Name="check-circle" Class="pos" />
+                        <a class="grow" href="/schulden/@s.Debt.Id">@s.Debt.Name</a>
+                        <span class="small muted">@(s.PaidOffDate is { } d ? L.T("debts.paidOffOn", L.Date(d)) : L["debts.paidOff"])</span>
+                    </li>
+                }
+            </ul>
+        }
+    }
+</div>
+
+@if (_editing)
+{
+    <DebtDialog OnClose="() => _editing = false" OnSaved="d => Nav.NavigateTo(Created(d))" />
+}
+
+@code {
+    private bool _editing;
+
+    private string Created(DebtEntry d) => $"/schulden/{d.Id}";
+
+    public static string TypeIcon(DebtType t) => t switch
+    {
+        DebtType.Mortgage => "home",
+        DebtType.Leasing => "car",
+        DebtType.Private => "users",
+        DebtType.CreditCard => "debt",
+        DebtType.Overdraft => "bank",
+        _ => "coins",
+    };
+}

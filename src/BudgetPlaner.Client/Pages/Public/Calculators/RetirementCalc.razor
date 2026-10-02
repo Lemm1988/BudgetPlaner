@@ -1,0 +1,62 @@
+@page "/rechner/ruhestand"
+@layout PublicLayout
+@inject Loc L
+@using BudgetPlaner.Domain.Calculators
+@using BudgetPlaner.Client.Components.Charts
+
+<PageTitle>@L["calc.retirement.title"] · @L["app.name"]</PageTitle>
+
+<CalcShell Title="@L["calc.retirement.title"]" Lead="@L["calc.retirement.short"]">
+    <Inputs>
+        <NumberField Label="@L["calc.retirement.age"]" Value="_age" ValueChanged="v => _age = Math.Clamp((int)v, 16, 90)" />
+        <NumberField Label="@L["calc.retirement.retireAge"]" Value="_retire" ValueChanged="v => _retire = Math.Clamp((int)v, 40, 90)" />
+        <NumberField Label="@L["calc.retirement.life"]" Value="_life" ValueChanged="v => _life = Math.Clamp((int)v, 60, 110)" />
+        <AmountField Label="@L["calc.retirement.desired"]" Value="_desired" ValueChanged="v => _desired = Math.Max(0, v ?? 0)" />
+        <AmountField Label="@L["calc.retirement.pension"]" Value="_pension" ValueChanged="v => _pension = Math.Max(0, v ?? 0)" />
+        <AmountField Label="@L["calc.retirement.savings"]" Value="_savings" ValueChanged="v => _savings = Math.Max(0, v ?? 0)" />
+        <AmountField Label="@L["calc.retirement.monthly"]" Value="_monthly" ValueChanged="v => _monthly = Math.Max(0, v ?? 0)" />
+        <PercentField Label="@L["calc.retirement.returnBefore"]" Value="_rb" ValueChanged="v => _rb = Math.Clamp(v ?? 0, -10, 20)" Hint="" />
+        <PercentField Label="@L["calc.retirement.returnAfter"]" Value="_ra" ValueChanged="v => _ra = Math.Clamp(v ?? 0, -10, 20)" Hint="" />
+        <PercentField Label="@L["calc.retirement.inflation"]" Value="_infl" ValueChanged="v => _infl = Math.Clamp(v ?? 0, -5, 20)" Hint="" />
+    </Inputs>
+    <Results>
+        @{
+            var r = R;
+        }
+        <p class="small muted">@L.T("calc.retirement.years", r.YearsToRetirement, r.YearsInRetirement)</p>
+        @if (r.MonthlyGapToday <= 0)
+        {
+            <div class="notice good"><Icon Name="check-circle" /><div>@L["calc.retirement.noGap"]</div></div>
+        }
+        else
+        {
+            <div class="result-grid">
+                <div class="stat"><span class="stat-label">@L["calc.retirement.gapToday"]</span><span class="stat-value sm">@L.Money(r.MonthlyGapToday)</span></div>
+                <div class="stat"><span class="stat-label">@L["calc.retirement.gapThen"] <InfoTip Term="inflation" /></span><span class="stat-value sm">@L.Money(r.MonthlyGapAtRetirement)</span></div>
+                <div class="stat"><span class="stat-label">@L["calc.retirement.required"]</span><span class="stat-value sm">@L.Money(r.RequiredCapital, decimals: 0)</span></div>
+                <div class="stat"><span class="stat-label">@L["calc.retirement.projected"]</span><span class="stat-value sm">@L.Money(r.ProjectedCapital, decimals: 0)</span></div>
+                <div class="stat"><span class="stat-label">@L["calc.retirement.surplus"]</span><span class="stat-value sm @(r.Surplus < 0 ? "neg" : "pos")">@L.Money(r.Surplus, plus: true, decimals: 0)</span></div>
+                <div class="stat"><span class="stat-label">@L["calc.retirement.requiredSavings"]</span><span class="stat-value sm">@L.Money(r.RequiredMonthlySavings)</span></div>
+            </div>
+            <div class="notice @(r.CapitalLastsUntilAge is null ? "good" : "warn") mt-2">
+                <Icon Name="@(r.CapitalLastsUntilAge is null ? "check-circle" : "alert")" />
+                <div>@(r.CapitalLastsUntilAge is { } until ? L.T("calc.retirement.lastsUntil", until) : L["calc.retirement.lastsForever"])</div>
+            </div>
+        }
+    </Results>
+    <Details>
+        <section class="card" aria-labelledby="rt-chart">
+            <div class="card-head"><h2 id="rt-chart">@L["calc.retirement.chart"]</h2></div>
+            <LineChart Title="@L["calc.retirement.chart"]" Labels="R.Timeline.Select(t => t.Age.ToString()).ToList()" XTitle="@L["calc.retirement.ageAxis"]"
+                       Series="@(new List<ChartSeries> { new(L["calc.retirement.chart"], R.Timeline.Select(t => (decimal?)t.Balance).ToList(), ChartColors.At(0), Area: true) })"
+                       Format="v => L.Money(v, decimals: 0)" AxisFormat="v => L.MoneyCompact(v)" MarkIndex="R.Timeline.ToList().FindIndex(t => t.Age == _retire)" MarkLabel="@L["calc.retirement.retireAge"]" Height="240" />
+        </section>
+    </Details>
+</CalcShell>
+
+@code {
+    private int _age = 35, _retire = 67, _life = 90;
+    private decimal _desired = 2500, _pension = 1600, _savings = 20000, _monthly = 300, _rb = 5, _ra = 3, _infl = 2;
+
+    private RetirementResult R => FinanceCalculators.Retirement(_age, Math.Max(_retire, _age), Math.Max(_life, _retire), _desired, _pension, _savings, _monthly, _rb, _ra, _infl);
+}

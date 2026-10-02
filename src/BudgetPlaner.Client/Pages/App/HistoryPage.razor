@@ -1,0 +1,228 @@
+@page "/verlauf"
+@inherits AppComponent
+@using System.Text.Json
+
+<PageTitle>@L["nav.history"] · @L["app.name"]</PageTitle>
+
+<div class="page-narrow">
+    <div class="page-head">
+        <div>
+            <h1>@L["nav.history"]</h1>
+            <p class="lead">@L["history.lead"]</p>
+        </div>
+    </div>
+
+    <div class="pill-nav" role="tablist" aria-label="@L["nav.history"]">
+        @foreach (var (key, label) in Filters)
+        {
+            <button type="button" role="tab" aria-selected="@(_filter == key ? "true" : "false")" @onclick="() => SetFilterAsync(key)">@label</button>
+        }
+    </div>
+
+    @if (_items is null)
+    {
+        <div class="card"><div class="skeleton" style="height:12rem"></div></div>
+    }
+    else if (Visible.Count == 0)
+    {
+        <div class="card"><EmptyState Icon="history" Title="@L["history.empty"]" /></div>
+    }
+    else
+    {
+        @foreach (var day in Visible.GroupBy(c => DateOnly.FromDateTime(c.CreatedAt.LocalDateTime)))
+        {
+            <h2 class="h3 mt-2">@L.Weekday(day.Key, longName: true), @L.Date(day.Key)</h2>
+            <ul class="list card">
+                @foreach (var c in day)
+                {
+                    var change = c;
+                    var open = _open.Contains(change.Id);
+                    <li class="history-row">
+                        <div class="row" style="flex-wrap:nowrap;align-items:flex-start">
+                            <span class="notif-icon @(change.IsConflict ? "warn" : "")" aria-hidden="true"><Icon Name="@IconOf(change)" /></span>
+                            <div class="grow" style="min-width:0">
+                                <div>
+                                    <strong>@(change.Label ?? L["history.type." + change.EntityType])</strong>
+                                    <span class="muted">· @L["history.type." + change.EntityType] @ActionText(change)</span>
+                                    @if (change.IsConflict) { <span class="badge warn"><Icon Name="alert" />@L["history.action.conflict"]</span> }
+                                </div>
+                                <div class="small muted">@change.CreatedAt.LocalDateTime.ToString("HH:mm") · @L.T("history.by", change.UserName ?? L["history.system"])</div>
+                                @if (change.IsConflict)
+                                {
+                                    <p class="small mb-0">@L["history.conflictHint"]</p>
+                                }
+                            </div>
+                            <div class="row" style="gap:.25rem;flex-wrap:nowrap">
+                                <button class="btn btn-sm btn-ghost" aria-expanded="@(open ? "true" : "false")" @onclick="() => Toggle(change.Id)">@L["history.details"]</button>
+                                @if (change.BeforeJson is not null)
+                                {
+                                    <button class="btn btn-sm" @onclick="() => RestoreAsync(change)"><Icon Name="undo" />@L["history.restore"]</button>
+                                }
+                            </div>
+                        </div>
+                        @if (open)
+                        {
+                            var diffs = Diff(change);
+                            @if (diffs.Count > 0)
+                            {
+                                <div class="table-wrap mt-1">
+                                    <table class="table">
+                                        <thead><tr><th scope="col">@L["history.field"]</th><th scope="col">@L["history.before"]</th><th scope="col">@L["history.after"]</th></tr></thead>
+                                        <tbody>
+                                            @foreach (var d in diffs)
+                                            {
+                                                <tr><th scope="row">@d.Field</th><td>@d.Before</td><td>@d.After</td></tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                        }
+                    </li>
+                }
+            </ul>
+        }
+        @if (_items.Count >= _take)
+        {
+            <div class="center mt-2"><button class="btn" @onclick="LoadMoreAsync">@L["history.loadMore"]</button></div>
+        }
+    }
+</div>
+
+@code {
+    private List<ChangeLogDto>? _items;
+    private string _filter = "";
+    private int _take = 100;
+    private readonly HashSet<Guid> _open = [];
+
+    private IEnumerable<(string Key, string Label)> Filters =>
+    [
+        ("", L["history.filterAll"]),
+        ("entry", L["history.type.entry"]),
+        ("debt", L["history.type.debt"]),
+        ("buffer", L["history.type.buffer"]),
+        ("category", L["history.type.category"]),
+        ("snapshot", L["history.type.snapshot"]),
+        ("conflicts", L["history.filterConflicts"]),
+    ];
+
+    private List<ChangeLogDto> Visible => _filter == "conflicts" ? _items!.Where(c => c.IsConflict).ToList() : _items!;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            var type = _filter is "" or "conflicts" ? "" : "&type=" + _filter;
+            _items = await Api.GetAsync<List<ChangeLogDto>>($"api/v1/changes?take={_take}{type}");
+        }
+        catch (Exception ex) { ShowError(ex); _items ??= []; }
+    }
+
+    private async Task SetFilterAsync(string key)
+    {
+        _filter = key;
+        _take = 100;
+        _items = null;
+        await LoadAsync();
+    }
+
+    private async Task LoadMoreAsync()
+    {
+        _take += 100;
+        await LoadAsync();
+    }
+
+    private void Toggle(Guid id)
+    {
+        if (!_open.Remove(id)) _open.Add(id);
+    }
+
+    private string ActionText(ChangeLogDto c) => L.Has("history.action." + c.Action) ? L["history.action." + c.Action] : c.Action;
+
+    private static string IconOf(ChangeLogDto c) => c.Action switch
+    {
+        "create" => "plus",
+        "delete" => "trash",
+        "restore" => "undo",
+        _ => c.IsConflict ? "alert" : "edit",
+    };
+
+    private async Task RestoreAsync(ChangeLogDto c)
+    {
+        if (!await Confirm.AskAsync(L["history.restoreTitle"], L.T("history.restoreText", c.Label ?? L["history.type." + c.EntityType]), L["history.restore"])) return;
+        try
+        {
+            await Api.PostAsync($"api/v1/changes/{c.Id}/restore");
+            await Sync.SyncNowAsync();
+            Toasts.Success(L["history.restored"]);
+            await LoadAsync();
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private sealed record FieldDiff(string Field, string Before, string After);
+
+    private static readonly HashSet<string> Meta = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "id", "householdId", "version", "createdAt", "updatedAt", "updatedBy", "createdBy", "isDemo", "sortIndex",
+    };
+
+    private static readonly Dictionary<string, string> FieldKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["name"] = "col.name", ["amount"] = "col.amount", ["categoryId"] = "col.category", ["debitDay"] = "col.debitDay", ["rhythm"] = "col.rhythm",
+        ["startPeriod"] = "col.start", ["endPeriod"] = "col.end", ["isFixed"] = "col.fixed", ["note"] = "col.note", ["actualAmount"] = "col.actual",
+        ["plannedAmount"] = "col.planned", ["isDone"] = "col.done", ["interestRate"] = "col.interestRate", ["monthlyRate"] = "col.monthlyRate",
+        ["targetAmount"] = "col.target", ["targetDate"] = "col.targetDate", ["date"] = "col.date", ["reason"] = "col.reason", ["openingBalance"] = "col.balance",
+        ["creditor"] = "col.creditor", ["kind"] = "col.kind", ["type"] = "col.type", ["originalAmount"] = "col.original", ["period"] = "col.period",
+        ["fromPeriod"] = "col.start",
+    };
+
+    /// <summary>Geänderte Felder zwischen Vorher/Nachher (ohne Verwaltungsfelder), lesbar formatiert.</summary>
+    private List<FieldDiff> Diff(ChangeLogDto c)
+    {
+        var before = Parse(c.BeforeJson);
+        var after = Parse(c.AfterJson);
+        var keys = before.Keys.Union(after.Keys).Where(k => !Meta.Contains(k));
+        var list = new List<FieldDiff>();
+        foreach (var k in keys)
+        {
+            before.TryGetValue(k, out var b);
+            after.TryGetValue(k, out var a);
+            if (b?.ToString() == a?.ToString()) continue;
+            list.Add(new FieldDiff(FieldKeys.TryGetValue(k, out var key) ? L[key] : k, Format(k, b), Format(k, a)));
+        }
+        return list;
+    }
+
+    private static Dictionary<string, JsonElement?> Parse(string? json)
+    {
+        var result = new Dictionary<string, JsonElement?>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrEmpty(json)) return result;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return result;
+            foreach (var p in doc.RootElement.EnumerateObject()) result[p.Name] = p.Value.Clone();
+        }
+        catch (JsonException) { }
+        return result;
+    }
+
+    private string Format(string field, JsonElement? value)
+    {
+        if (value is not { } v || v.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return "–";
+        return v.ValueKind switch
+        {
+            JsonValueKind.True => L["col.yes"],
+            JsonValueKind.False => L["col.no"],
+            JsonValueKind.Number when field.EndsWith("Day", StringComparison.OrdinalIgnoreCase) => v.GetRawText(),
+            JsonValueKind.Number => L.Num(v.GetDecimal(), 2),
+            JsonValueKind.String when field.EndsWith("Id", StringComparison.OrdinalIgnoreCase) && Guid.TryParse(v.GetString(), out var g) =>
+                Ix.CategoryById.ContainsKey(g) ? L.Cat(g) : Ix.BufferById.GetValueOrDefault(g)?.Name ?? Ix.DebtById.GetValueOrDefault(g)?.Name ?? "…",
+            JsonValueKind.String => v.GetString() ?? "–",
+            _ => v.GetRawText(),
+        };
+    }
+}

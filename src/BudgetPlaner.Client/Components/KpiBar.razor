@@ -1,0 +1,33 @@
+@inherits AppComponent
+
+@* Sticky Kennzahlenleiste (F-050, B-18): Monat + Einnahmen, Ausgaben, Überschuss, Unverplant mit Ampel. *@
+<div class="kpi-bar" role="region" aria-label="@L["kpi.region"]">
+    <div class="kpi-row">
+        <MonthSwitcher ShowRange="true" />
+        <div class="kpis">
+            <div class="kpi">
+                <span class="kpi-label">@L["kpi.income"]</span>
+                <span class="kpi-value pos">@L.Money(Month.Income)</span>
+            </div>
+            <div class="kpi">
+                <span class="kpi-label">@L["kpi.expenses"]</span>
+                <span class="kpi-value">@L.Money(Month.Expenses)</span>
+            </div>
+            <div class="kpi optional">
+                <span class="kpi-label">@L["kpi.surplus"]</span>
+                <span class="kpi-value @(Month.Surplus < 0 ? "neg" : "")">@L.Money(Month.Surplus)</span>
+            </div>
+            <div class="kpi">
+                <span class="kpi-label">@L["kpi.unassigned"]</span>
+                <span class="row" style="gap:.3rem;flex-wrap:nowrap">
+                    <span class="kpi-value @(Month.Unverplant < 0 ? "neg" : "")">@L.Money(Month.Unverplant)</span>
+                    <AmpelBadge Item="Engine.Ampel.Budget(Selected)" Compact="true" Label="@L["kpi.unassigned"]" AlignRight="true" />
+                </span>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private MonthTotals Month => Engine.Totals(Selected);
+}

@@ -1,0 +1,40 @@
+@implements IDisposable
+@inject ConfirmService Confirm
+@inject Loc L
+
+@if (Confirm.Current is { } req)
+{
+    <Modal Title="@req.Title" OnClose="() => Confirm.Resolve(false)">
+        <ChildContent>
+            <p style="white-space:pre-line">@req.Message</p>
+            @if (req.Input is not null)
+            {
+                <div class="field">
+                    <label for="confirm-input">@L.T("confirm.typeToConfirm", req.Input)</label>
+                    <input id="confirm-input" class="input" @bind="_typed" @bind:event="oninput" autocomplete="off" />
+                </div>
+            }
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => Confirm.Resolve(false)">@L["action.cancel"]</button>
+            <button class="btn @(req.Danger ? "btn-danger" : "btn-primary")" disabled="@(req.Input is not null && !string.Equals(_typed?.Trim(), req.Input, StringComparison.OrdinalIgnoreCase))"
+                    @onclick="() => Confirm.Resolve(true)">
+                @req.ConfirmLabel
+            </button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private string? _typed;
+
+    protected override void OnInitialized() => Confirm.Changed += Refresh;
+
+    private void Refresh()
+    {
+        _typed = null;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => Confirm.Changed -= Refresh;
+}

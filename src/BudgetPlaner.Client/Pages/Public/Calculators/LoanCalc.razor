@@ -1,0 +1,36 @@
+@page "/rechner/kredit"
+@layout PublicLayout
+@inject Loc L
+@using BudgetPlaner.Domain.Calculators
+@using BudgetPlaner.Client.Components.Charts
+
+<PageTitle>@L["calc.loan.title"] · @L["app.name"]</PageTitle>
+
+<CalcShell Title="@L["calc.loan.title"]" Lead="@L["calc.loan.short"]">
+    <Inputs>
+        <AmountField Label="@L["calc.loan.amount"]" Value="_amount" ValueChanged="v => _amount = Math.Max(0, v ?? 0)" />
+        <PercentField Label="@L["calc.loan.rate"]" Value="_rate" ValueChanged="v => _rate = Math.Clamp(v ?? 0, 0, 100)" Hint="" />
+        <NumberField Label="@L["calc.loan.months"]" Value="_months" ValueChanged="v => _months = Math.Clamp((int)v, 1, 600)" />
+    </Inputs>
+    <Results>
+        <div class="stat mb-2">
+            <span class="stat-label">@L["calc.loan.payment"] <InfoTip Term="annuitaet" /></span>
+            <span class="stat-value">@L.Money(R.MonthlyPayment)</span>
+        </div>
+        <div class="result-grid">
+            <div class="stat"><span class="stat-label">@L["calc.loan.interest"]</span><span class="stat-value sm">@L.Money(R.TotalInterest)</span></div>
+            <div class="stat"><span class="stat-label">@L["calc.loan.total"]</span><span class="stat-value sm">@L.Money(R.TotalCost)</span></div>
+            <div class="stat"><span class="stat-label">@L["debt.term"]</span><span class="stat-value sm">@L.Duration(_months)</span></div>
+        </div>
+    </Results>
+    <Details>
+        <AmortizationTable Years="R.Years" Title="@L["debt.schedule"]" />
+    </Details>
+</CalcShell>
+
+@code {
+    private decimal _amount = 15000, _rate = 5.9m;
+    private int _months = 60;
+
+    private LoanResult R => FinanceCalculators.Loan(_amount, _rate, _months);
+}

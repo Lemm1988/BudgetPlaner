@@ -1,0 +1,260 @@
+@page "/cashflow"
+@inherits AppComponent
+@using BudgetPlaner.Client.Components.Cashflow
+@using BudgetPlaner.Client.Components.Charts
+
+<PageTitle>@L["nav.cashflow"] · @L.Period(Selected) · @L["app.name"]</PageTitle>
+
+<KpiBar />
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h1>@L["nav.cashflow"]</h1>
+            <p class="lead">@L["cashflow.lead"]</p>
+        </div>
+        <div class="page-actions">
+            <div class="segmented" role="group" aria-label="@L["cashflow.view"]">
+                <button type="button" aria-pressed="@(!_list ? "true" : "false")" @onclick="() => _list = false"><Icon Name="calendar" />@L["cashflow.viewCalendar"]</button>
+                <button type="button" aria-pressed="@(_list ? "true" : "false")" @onclick="() => _list = true"><Icon Name="layers" />@L["cashflow.viewList"]</button>
+            </div>
+            <button class="btn btn-primary" @onclick="() => OpenCheckpoint(null)"><Icon Name="bank" />@L["cashflow.checkpoint"]</button>
+        </div>
+    </div>
+
+    @if (!Store.IsLoaded)
+    {
+        <div class="card"><div class="skeleton" style="height:12rem"></div></div>
+    }
+    else
+    {
+        var r = Engine.Cashflow.ForPeriod(Selected);
+        var critical = r.Days.Count(d => d.IsCritical);
+
+        @if (!r.HasAnchor)
+        {
+            <div class="notice info mb-2">
+                <Icon Name="bank" />
+                <div style="flex:1">@L["cashflow.noAnchor"] <InfoTip Term="kontostand" /></div>
+                <button class="btn btn-sm" @onclick="() => OpenCheckpoint(null)">@L["cashflow.checkpoint"]</button>
+            </div>
+        }
+
+        <section class="card mb-2" aria-labelledby="cf-summary">
+            <div class="card-head">
+                <h2 id="cf-summary">@L.Period(Selected)</h2>
+                <AmpelBadge Item="Engine.Ampel.Cashflow(Selected)" Label="@L["ampel.cashflow"]" ShowLabel="true" AlignRight="true" />
+            </div>
+            <div class="grid grid-4" style="gap:.75rem">
+                <div class="stat"><span class="stat-label">@L["cashflow.startBalance"]</span><span class="stat-value sm @(r.StartBalance < 0 ? "neg" : "")">@L.Money(r.StartBalance)</span></div>
+                <div class="stat"><span class="stat-label">@L["cashflow.in"]</span><span class="stat-value sm pos">@L.Money(r.TotalIn, plus: true)</span></div>
+                <div class="stat"><span class="stat-label">@L["cashflow.out"]</span><span class="stat-value sm">@L.Money(r.TotalOut)</span></div>
+                <div class="stat"><span class="stat-label">@L["cashflow.endBalance"]</span><span class="stat-value sm @(r.EndBalance < 0 ? "neg" : "")">@L.Money(r.EndBalance)</span></div>
+            </div>
+            <p class="small mt-1 mb-0 @(r.MinBalance < 0 ? "neg" : "muted")">
+                @L["cashflow.lowest"]: <strong>@L.Money(r.MinBalance)</strong> @L.T("cashflow.lowestOn", L.Date(r.MinBalanceDate)) <InfoTip Term="engpass" />
+            </p>
+            @if (critical > 0)
+            {
+                <div class="notice bad mt-2" role="status"><Icon Name="alert" /><div>@(critical == 1 ? L["cashflow.criticalDay"] : L.T("cashflow.criticalDays", critical))</div></div>
+            }
+        </section>
+
+        <section class="card mb-2" aria-labelledby="cf-chart">
+            <div class="card-head"><h2 id="cf-chart">@L["cashflow.chartTitle"]</h2></div>
+            @{
+                var chart = Chart(r);
+            }
+            <LineChart Title="@L["cashflow.chartTitle"]" Labels="chart.Labels" TooltipLabels="chart.Tooltips" Series="chart.Series" Format="v => L.Money(v)"
+                       AxisFormat="v => L.MoneyCompact(v)" MarkIndex="chart.Today" MarkLabel="@L["chart.today"]" Height="220" />
+        </section>
+
+        @if (!_list)
+        {
+            <section class="card mb-2" aria-label="@L["cashflow.viewCalendar"]">
+                <div class="calendar" role="group" aria-label="@L.Period(Selected)">
+                    @foreach (var h in Fmt.WeekHeader(L.Lang))
+                    {
+                        <div class="cal-head" aria-hidden="true">@h</div>
+                    }
+                    @for (var i = 0; i < Offset(r.Start); i++)
+                    {
+                        <div aria-hidden="true"></div>
+                    }
+                    @foreach (var day in r.Days)
+                    {
+                        var d = day;
+                        var selected = d.Date == SelectedDay(r);
+                        <button type="button" class="cal-day @(d.IsToday ? "today" : "") @(d.IsCritical ? "critical" : "") @(selected ? "selected" : "")"
+                                aria-pressed="@(selected ? "true" : "false")" aria-label="@DayLabel(d)" @onclick="() => _day = d.Date">
+                            <span class="d">
+                                <span>@d.Date.Day</span>
+                                @if (d.IsCritical) { <Icon Name="alert" Class="crit-icon" /> }
+                                else if (d.Checkpoint is not null) { <Icon Name="bank" Class="cp-icon" /> }
+                            </span>
+                            @if (d.Items.Count > 0)
+                            {
+                                <span class="dots" aria-hidden="true">
+                                    @foreach (var it in d.Items.Take(5))
+                                    {
+                                        <i style="background:@(it.Amount >= 0 ? "var(--income)" : "var(--text-faint)")"></i>
+                                    }
+                                </span>
+                                <span class="flow @(d.Net >= 0 ? "pos" : "")">@L.Money(d.Net, plus: true, decimals: 0)</span>
+                            }
+                            <span class="bal">@L.Money(d.Balance, decimals: 0)</span>
+                        </button>
+                    }
+                </div>
+            </section>
+
+            @if (r.Days.FirstOrDefault(d => d.Date == SelectedDay(r)) is { } sel)
+            {
+                <section class="card mb-2" aria-labelledby="cf-day" aria-live="polite">
+                    <div class="card-head">
+                        <h2 id="cf-day">@L.Weekday(sel.Date, longName: true), @L.Date(sel.Date)</h2>
+                        <button class="btn btn-sm" @onclick="() => OpenCheckpoint(sel.Date)"><Icon Name="bank" />@L["cashflow.checkpoint"]</button>
+                    </div>
+                    <DayItems Day="sel" ShowBalance="true" />
+                </section>
+            }
+        }
+        else
+        {
+            <section class="card mb-2" aria-label="@L["cashflow.viewList"]">
+                @{
+                    var withItems = r.Days.Where(d => d.Items.Count > 0 || d.Checkpoint is not null || d.IsToday).ToList();
+                }
+                @if (withItems.Count == 0)
+                {
+                    <p class="muted mb-0">@L["cashflow.noItems"]</p>
+                }
+                @foreach (var d in withItems)
+                {
+                    <div class="cf-day-group @(d.IsCritical ? "critical" : "")">
+                        <div class="row-between cf-day-head">
+                            <strong>@L.Weekday(d.Date), @L.Date(d.Date) @if (d.IsToday) { <span class="badge primary">@L["chart.today"]</span> }</strong>
+                            <span class="small @(d.IsCritical ? "neg" : "muted")">@L["cashflow.balanceEndOfDay"]: <strong class="num">@L.Money(d.Balance)</strong></span>
+                        </div>
+                        <DayItems Day="d" />
+                    </div>
+                }
+            </section>
+        }
+
+        <div class="grid grid-2 start">
+            <section class="card" aria-labelledby="cf-bottlenecks">
+                <div class="card-head"><h2 id="cf-bottlenecks">@L["cashflow.bottlenecks"] <InfoTip Term="engpass" /></h2></div>
+                <p class="small muted">@L["cashflow.bottlenecksLead"]</p>
+                @{
+                    var bottlenecks = Engine.Forecasts.Balance(12).Months.Where(m => m.IsBottleneck).ToList();
+                }
+                @if (bottlenecks.Count == 0)
+                {
+                    <p class="mb-0 pos"><Icon Name="check-circle" /> @L["cashflow.noBottlenecks"]</p>
+                }
+                else
+                {
+                    <ul class="list">
+                        @foreach (var b in bottlenecks)
+                        {
+                            <li class="list-row">
+                                <Icon Name="alert" Class="neg" />
+                                <div class="grow">
+                                    <button class="btn btn-ghost btn-sm" style="padding-left:0" @onclick="() => Ui.SetPeriod(b.Period)">@L.Period(b.Period)</button>
+                                    <div class="small muted">@L.T("cashflow.bottleneckItem", L.Money(b.MinBalance), L.Date(b.MinBalanceDate))</div>
+                                </div>
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+
+            <section class="card" aria-labelledby="cf-checkpoints">
+                <div class="card-head"><h2 id="cf-checkpoints">@L["cashflow.checkpoints"] <InfoTip Term="kontostand" /></h2></div>
+                @{
+                    var cps = r.Days.Where(d => d.Checkpoint is not null).ToList();
+                }
+                @if (cps.Count == 0)
+                {
+                    <p class="small muted mb-0">@L["cashflow.noCheckpoints"]</p>
+                }
+                else
+                {
+                    <ul class="list">
+                        @foreach (var d in cps)
+                        {
+                            var cp = d.Checkpoint!;
+                            <li class="list-row">
+                                <Icon Name="bank" />
+                                <div class="grow">
+                                    <strong class="num">@L.Money(cp.Amount)</strong> <span class="small muted">· @L.Date(cp.Date)</span>
+                                    @if (d.CheckpointDifference is { } diff && diff != 0)
+                                    {
+                                        <div class="small muted">@L.T("cashflow.checkpointDiff", L.Money(diff, plus: true))</div>
+                                    }
+                                    @if (cp.Note is { } n) { <div class="small">@n</div> }
+                                </div>
+                                <button class="icon-btn sm" aria-label="@L["action.edit"]" @onclick="() => _checkpoint = (cp, null)"><Icon Name="edit" /></button>
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+        </div>
+    }
+</div>
+
+@if (_checkpoint is { } c)
+{
+    <CheckpointDialog Checkpoint="c.Item1" Date="c.Item2" OnClose="() => _checkpoint = null" />
+}
+
+@code {
+    private bool _list;
+    private DateOnly? _day;
+    private (BalanceCheckpoint?, DateOnly?)? _checkpoint;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        _list = Ui.IsMobile;
+    }
+
+    private void OpenCheckpoint(DateOnly? date) => _checkpoint = (null, date);
+
+    private static int Offset(DateOnly start) => ((int)start.DayOfWeek + 6) % 7;
+
+    /// <summary>Ausgewählter Tag: Klick, sonst heute (falls im Monat), sonst der erste Tag mit Buchungen.</summary>
+    private DateOnly SelectedDay(CashflowResult r)
+    {
+        if (_day is { } d && d >= r.Start && d <= r.End) return d;
+        if (Engine.Today >= r.Start && Engine.Today <= r.End) return Engine.Today;
+        return r.Days.FirstOrDefault(x => x.Items.Count > 0)?.Date ?? r.Start;
+    }
+
+    private string DayLabel(CashDay d)
+    {
+        var text = L.T("cashflow.dayLabel", L.Date(d.Date), L.Money(d.Balance));
+        if (d.Items.Count > 0) text += ", " + (d.Items.Count == 1 ? L["cashflow.itemCount"] : L.T("cashflow.itemsCount", d.Items.Count));
+        if (d.IsCritical) text += ", " + L["cashflow.dayCritical"];
+        return text;
+    }
+
+    private sealed record DayChart(List<string> Labels, List<string> Tooltips, List<ChartSeries> Series, int? Today);
+
+    /// <summary>Tagesstände: bis heute durchgezogen, danach Prognose gestrichelt in eigener Farbe (F-070).</summary>
+    private DayChart Chart(CashflowResult r)
+    {
+        var days = r.Days.ToList();
+        var labels = days.Select(d => d.Date.Day + ".").ToList();
+        var tooltips = days.Select(d => $"{L.Weekday(d.Date)}, {L.Date(d.Date)}").ToList();
+        var todayIdx = days.FindIndex(d => d.IsToday);
+        var actual = days.Select(d => d.IsPast || d.IsToday ? d.Balance : (decimal?)null).ToList();
+        var forecast = days.Select(d => !d.IsPast ? d.Balance : (decimal?)null).ToList();
+        var series = new List<ChartSeries>();
+        if (actual.Any(v => v is not null)) series.Add(new ChartSeries(L["cashflow.chartActual"], actual, ChartColors.At(0)));
+        if (forecast.Any(v => v is not null)) series.Add(new ChartSeries(L["cashflow.chartForecast"], forecast, ChartColors.At(1), Dashed: true));
+        return new DayChart(labels, tooltips, series, todayIdx >= 0 ? todayIdx : null);
+    }
+}

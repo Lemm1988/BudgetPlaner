@@ -1,0 +1,44 @@
+@page "/rechner/zinseszins"
+@layout PublicLayout
+@inject Loc L
+@using BudgetPlaner.Domain.Calculators
+@using BudgetPlaner.Client.Components.Charts
+
+<PageTitle>@L["calc.compound.title"] · @L["app.name"]</PageTitle>
+
+<CalcShell Title="@L["calc.compound.title"]" Lead="@L["calc.compound.short"]">
+    <Inputs>
+        <AmountField Label="@L["calc.compound.start"]" Value="_start" ValueChanged="v => _start = v ?? 0" />
+        <AmountField Label="@L["calc.compound.monthly"]" Value="_monthly" ValueChanged="v => _monthly = v ?? 0" />
+        <PercentField Label="@L["calc.compound.return"]" Value="_return" ValueChanged="v => _return = v ?? 0" Hint="" />
+        <NumberField Label="@L["calc.compound.years"]" Value="_years" ValueChanged="v => _years = Math.Clamp((int)v, 1, 100)" />
+        <PercentField Label="@L["calc.compound.inflation"]" Value="_inflation" ValueChanged="v => _inflation = v ?? 0" Hint="" />
+        <PercentField Label="@L["calc.compound.increase"]" Value="_increase" ValueChanged="v => _increase = v ?? 0" Hint="" />
+    </Inputs>
+    <Results>
+        <div class="stat mb-2">
+            <span class="stat-label">@L["calc.compound.final"] <InfoTip Term="zinseszins" /></span>
+            <span class="stat-value pos">@L.Money(R.FinalBalance)</span>
+        </div>
+        <div class="result-grid">
+            <div class="stat"><span class="stat-label">@L["calc.compound.contributions"]</span><span class="stat-value sm">@L.Money(R.TotalContributions)</span></div>
+            <div class="stat"><span class="stat-label">@L["calc.compound.interest"]</span><span class="stat-value sm">@L.Money(R.TotalInterest)</span></div>
+            <div class="stat"><span class="stat-label">@L["calc.compound.real"] <InfoTip Term="inflation" /></span><span class="stat-value sm">@L.Money(R.RealFinalBalance)</span></div>
+        </div>
+    </Results>
+    <Details>
+        <section class="card" aria-labelledby="cc-chart">
+            <div class="card-head"><h2 id="cc-chart">@L["calc.compound.chart"]</h2></div>
+            <LineChart Title="@L["calc.compound.chart"]" Labels="R.Years.Select(y => y.Year.ToString()).ToList()" XTitle="@L["calc.year"]"
+                       Series="@(new List<ChartSeries> { new(L["calc.compound.final"], R.Years.Select(y => (decimal?)y.Balance).ToList(), ChartColors.At(0), Area: true), new(L["calc.compound.contributions"], R.Years.Select(y => (decimal?)y.Contributions).ToList(), ChartColors.At(1)), new(L["calc.compound.real"], R.Years.Select(y => (decimal?)y.RealBalance).ToList(), ChartColors.At(2)) })"
+                       Format="v => L.Money(v, decimals: 0)" AxisFormat="v => L.MoneyCompact(v)" Height="260" />
+        </section>
+    </Details>
+</CalcShell>
+
+@code {
+    private decimal _start = 5000, _monthly = 200, _return = 5, _inflation = 2, _increase;
+    private int _years = 20;
+
+    private CompoundInterestResult R => FinanceCalculators.CompoundInterest(_start, _monthly, _return, _years, _inflation, _increase);
+}

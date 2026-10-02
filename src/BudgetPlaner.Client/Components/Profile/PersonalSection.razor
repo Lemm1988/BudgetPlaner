@@ -1,0 +1,150 @@
+@inherits AppComponent
+@inject AppStartup Startup
+@inject BrowserJs Browser
+
+@* Persönliche Daten (F-100): Name sofort für alle sichtbar, E-Mail-Wechsel mit Bestätigungscode, Sprache, Design, Zeitzone. *@
+<section class="card" aria-labelledby="pf-personal">
+    <div class="card-head"><h2 id="pf-personal">@L["profile.personal"]</h2></div>
+    <form class="stack" @onsubmit="SaveAsync" @onsubmit:preventDefault="true">
+        <div class="form-grid">
+            <div class="field">
+                <label for="pf-name">@L["profile.name"]</label>
+                <input id="pf-name" class="input" @bind="_name" maxlength="80" autocomplete="name" required />
+                <span class="hint">@L["profile.nameHint"]</span>
+            </div>
+            <div class="field">
+                <label for="pf-lang">@L["profile.language"]</label>
+                <select id="pf-lang" class="select" @bind="_lang">
+                    <option value="de">@L["profile.lang.de"]</option>
+                    <option value="en">@L["profile.lang.en"]</option>
+                </select>
+            </div>
+            <div class="field">
+                <label for="pf-tz">@L["profile.timeZone"]</label>
+                <select id="pf-tz" class="select" @bind="_timeZone">
+                    @foreach (var tz in TimeZones)
+                    {
+                        <option value="@tz">@tz.Replace('_', ' ')</option>
+                    }
+                </select>
+                <span class="hint">@L["profile.timeZoneHint"]</span>
+            </div>
+        </div>
+        <fieldset>
+            <legend>@L["theme.label"]</legend>
+            <div class="segmented" role="radiogroup">
+                @foreach (var t in new[] { "system", "light", "dark" })
+                {
+                    <label><input type="radio" name="pf-theme" checked="@(Ui.Theme == t)" @onchange="() => SetThemeAsync(t)" /><span>@L["theme." + t]</span></label>
+                }
+            </div>
+        </fieldset>
+        <div><button type="submit" class="btn btn-primary" disabled="@_busy"><Icon Name="check" />@L["action.save"]</button></div>
+    </form>
+
+    <hr />
+    <div class="stack-sm">
+        <span class="label">@L["profile.email"]</span>
+        <div class="row-between">
+            <strong>@Session.User?.Email</strong>
+            @if (_emailStep == 0)
+            {
+                <button class="btn btn-sm" @onclick="() => _emailStep = 1"><Icon Name="mail" />@L["profile.changeEmail"]</button>
+            }
+        </div>
+        @if (_emailStep == 1)
+        {
+            <form class="row" @onsubmit="RequestEmailAsync" @onsubmit:preventDefault="true">
+                <label for="pf-newmail" class="sr-only">@L["profile.newEmail"]</label>
+                <input id="pf-newmail" class="input" type="email" inputmode="email" autocomplete="email" placeholder="@L["profile.newEmail"]" @bind="_newEmail" required style="flex:1;min-width:14rem" />
+                <button type="submit" class="btn" disabled="@_busy">@L["profile.sendCode"]</button>
+                <button type="button" class="btn btn-ghost" @onclick="() => _emailStep = 0">@L["action.cancel"]</button>
+            </form>
+        }
+        else if (_emailStep == 2)
+        {
+            <p class="small mb-0">@L.T("profile.codeSent", _newEmail)</p>
+            <form class="row" @onsubmit="ConfirmEmailAsync" @onsubmit:preventDefault="true">
+                <label for="pf-code" class="sr-only">@L["profile.code"]</label>
+                <input id="pf-code" class="input code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123456" @bind="_code" style="max-width:10rem" />
+                <button type="submit" class="btn btn-primary" disabled="@_busy">@L["profile.confirmCode"]</button>
+                <button type="button" class="btn btn-ghost" @onclick="() => _emailStep = 0">@L["action.cancel"]</button>
+            </form>
+        }
+    </div>
+</section>
+
+@code {
+    private static readonly string[] KnownTimeZones =
+    [
+        "Europe/Berlin", "Europe/Vienna", "Europe/Zurich", "Europe/Amsterdam", "Europe/Brussels", "Europe/Luxembourg", "Europe/Paris",
+        "Europe/London", "Europe/Madrid", "Europe/Rome", "Europe/Warsaw", "Europe/Prague", "Europe/Copenhagen", "Europe/Stockholm",
+        "Europe/Oslo", "Europe/Helsinki", "Europe/Athens", "Europe/Istanbul", "America/New_York", "America/Chicago", "America/Denver",
+        "America/Los_Angeles", "Asia/Dubai", "Asia/Singapore", "Asia/Tokyo", "Australia/Sydney", "UTC",
+    ];
+
+    private string _name = "", _lang = "de", _timeZone = "Europe/Berlin", _newEmail = "", _code = "";
+    private int _emailStep;
+    private bool _busy;
+    private string? _browserZone;
+
+    private IEnumerable<string> TimeZones => KnownTimeZones.Concat(new[] { _timeZone, _browserZone }.Where(z => !string.IsNullOrEmpty(z))!).Distinct()!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var u = Session.User;
+        _name = u?.Name ?? "";
+        _lang = u?.Language ?? L.Lang;
+        _timeZone = u?.TimeZone ?? "Europe/Berlin";
+        try { _browserZone = await Browser.Call<string>("timeZone"); } catch (Exception) { }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_name)) { Toasts.Error(L["err.name.required"]); return; }
+        _busy = true;
+        try
+        {
+            var user = await Api.PatchAsync<UserDto>("api/v1/me", new ProfileUpdate(_name.Trim(), _lang, _timeZone, null));
+            await Session.UpdateUserAsync(user);
+            if (user.Language != L.Lang) await L.SetAsync(user.Language);
+            Toasts.Success(L["profile.saved"]);
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+
+    private async Task SetThemeAsync(string theme)
+    {
+        await Startup.SetThemeAsync(theme);
+        try { await Session.UpdateUserAsync(await Api.PatchAsync<UserDto>("api/v1/me", new ProfileUpdate(null, null, null, theme))); }
+        catch (Exception) { /* offline: Design gilt lokal */ }
+    }
+
+    private async Task RequestEmailAsync()
+    {
+        _busy = true;
+        try
+        {
+            await Api.PostAsync("api/v1/me/email", new EmailChangeRequest(_newEmail.Trim()));
+            _emailStep = 2;
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+
+    private async Task ConfirmEmailAsync()
+    {
+        _busy = true;
+        try
+        {
+            var user = await Api.PostAsync<UserDto>("api/v1/me/email/confirm", new EmailChangeConfirm(new string(_code.Where(char.IsDigit).ToArray())));
+            await Session.UpdateUserAsync(user);
+            _emailStep = 0;
+            _code = "";
+            Toasts.Success(L["profile.emailChanged"]);
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+}

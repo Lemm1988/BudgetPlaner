@@ -1,0 +1,73 @@
+@inherits AppComponent
+
+@* Buchungen eines Tages im Cashflow; Budgetpositionen lassen sich direkt abhaken. *@
+@if (Day.Items.Count == 0 && Day.Checkpoint is null)
+{
+    <p class="small muted mb-0">@L["cashflow.noItems"]</p>
+}
+else
+{
+    <ul class="list">
+        @foreach (var it in Day.Items)
+        {
+            var item = it;
+            <li class="list-row">
+                @if (item.EntryId is { } eid && Ix.EntryById.GetValueOrDefault(eid) is { } entry && !IsClosed)
+                {
+                    <button type="button" class="done-check @(item.IsDone ? "checked" : "")" aria-pressed="@(item.IsDone ? "true" : "false")"
+                            aria-label="@(item.IsDone ? L.T("cashflow.markOpen", item.Name) : L.T("cashflow.markDone", item.Name))" @onclick="() => ToggleAsync(entry, item)">
+                        <span class="box">@if (item.IsDone) { <Icon Name="check" StrokeWidth="3" /> }</span>
+                    </button>
+                }
+                else
+                {
+                    <span class="done-check" aria-hidden="true"><Icon Name="@TypeIcon(item.Type)" /></span>
+                }
+                <div class="grow">
+                    <div class="truncate"><strong>@item.Name</strong></div>
+                    <div class="small muted truncate">@L["cashflow.type." + item.Type]@(item.CategoryId is { } c ? " · " + L.Cat(c) : "")</div>
+                </div>
+                <span class="num @(item.Amount >= 0 ? "pos" : "")">@L.Money(item.Amount, plus: true)</span>
+            </li>
+        }
+        @if (Day.Checkpoint is { } cp)
+        {
+            <li class="list-row">
+                <span class="done-check" aria-hidden="true"><Icon Name="bank" /></span>
+                <div class="grow">
+                    <strong>@L["cashflow.checkpointMark"]</strong>
+                    @if (Day.CheckpointDifference is { } diff && diff != 0)
+                    {
+                        <div class="small muted">@L.T("cashflow.checkpointDiff", L.Money(diff, plus: true))</div>
+                    }
+                </div>
+                <span class="num">@L.Money(cp.Amount)</span>
+            </li>
+        }
+    </ul>
+}
+@if (ShowBalance)
+{
+    <p class="small right mt-1 mb-0 @(Day.IsCritical ? "neg" : "muted")">@L["cashflow.balanceEndOfDay"]: <strong class="num">@L.Money(Day.Balance)</strong></p>
+}
+
+@code {
+    [Parameter, EditorRequired] public CashDay Day { get; set; } = default!;
+    [Parameter] public bool ShowBalance { get; set; }
+
+    private bool IsClosed => Engine.Month(Ix.Calendar.PeriodOf(Day.Date)).IsClosed;
+
+    private static string TypeIcon(string type) => type switch
+    {
+        "income" => "arrow-down",
+        "allocation" => "piggy",
+        "withdrawal" => "piggy",
+        _ => "arrow-up",
+    };
+
+    private async Task ToggleAsync(BudgetEntry entry, CashItem item)
+    {
+        try { await Act.SetDoneAsync(entry, Ix.Calendar.PeriodOf(item.Date), !item.IsDone); }
+        catch (Exception ex) { ShowError(ex); }
+    }
+}

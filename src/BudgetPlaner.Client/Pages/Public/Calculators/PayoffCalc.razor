@@ -1,0 +1,134 @@
+@page "/rechner/tilgung"
+@layout PublicLayout
+@inject Loc L
+@using BudgetPlaner.Client.Components.Charts
+
+<PageTitle>@L["calc.payoff.title"] · @L["app.name"]</PageTitle>
+
+<CalcShell Title="@L["calc.payoff.title"]" Lead="@L["calc.payoff.short"]">
+    <Inputs>
+        <div class="full stack">
+            <span class="label">@L["calc.payoff.debts"]</span>
+            @for (var i = 0; i < _debts.Count; i++)
+            {
+                var idx = i;
+                var d = _debts[idx];
+                <fieldset class="card soft flat payoff-debt">
+                    <legend class="sr-only">@d.Name</legend>
+                    <div class="form-grid">
+                        <div class="field">
+                            <label for="pd-name-@idx">@L["calc.payoff.name"]</label>
+                            <input id="pd-name-@idx" class="input" value="@d.Name" @onchange="e => Update(idx, d with { Name = e.Value?.ToString() ?? string.Empty })" />
+                        </div>
+                        <AmountField Label="@L["calc.payoff.balance"]" Value="d.Balance" ValueChanged="v => Update(idx, d with { Balance = Math.Max(0, v ?? 0) })" />
+                        <AmountField Label="@L["calc.payoff.rate"]" Value="d.MinPayment" ValueChanged="v => Update(idx, d with { MinPayment = Math.Max(0, v ?? 0) })" />
+                        <PercentField Label="@L["calc.payoff.interest"]" Value="d.AnnualRatePercent" ValueChanged="v => Update(idx, d with { AnnualRatePercent = Math.Clamp(v ?? 0, 0, 100) })" Hint="" />
+                    </div>
+                    @if (_debts.Count > 1)
+                    {
+                        <button type="button" class="btn btn-ghost btn-sm mt-1" @onclick="() => _debts.RemoveAt(idx)"><Icon Name="trash" />@L["calc.payoff.remove"]</button>
+                    }
+                </fieldset>
+            }
+            <div><button type="button" class="btn btn-sm" @onclick="Add"><Icon Name="plus" />@L["calc.payoff.add"]</button></div>
+        </div>
+        <AmountField Label="@L["calc.payoff.extra"]" Value="_extra" ValueChanged="v => _extra = Math.Max(0, v ?? 0)" />
+    </Inputs>
+    <Results>
+        @{
+            var results = Strategies;
+            var best = results.Where(r => r.Key != "minimum" && r.Result.Possible).OrderBy(r => r.Result.TotalInterest).ThenBy(r => r.Result.Months).FirstOrDefault().Key;
+            var minimum = results[0].Result;
+        }
+        <div class="stack">
+            @foreach (var (key, r) in results)
+            {
+                <div class="card flat @(key == best ? "soft" : "")" style="@(key == best ? "border-color:var(--primary)" : "")">
+                    <div class="card-head">
+                        <h3>@L["debts.strategy." + key] <InfoTip Term="@(key == "avalanche" ? "lawine" : "schneeball")" /></h3>
+                        @if (key == best)
+                        {
+                            <span class="badge good"><Icon Name="check" />@L["debts.strategy.best"]</span>
+                        }
+                    </div>
+                    @if (!r.Possible)
+                    {
+                        <p class="neg small mb-0">@L["debts.strategy.impossible"]</p>
+                    }
+                    else
+                    {
+                        <dl class="detail-grid">
+                            <div><dt>@L["debts.strategy.duration"]</dt><dd>@L.Duration(r.Months)</dd></div>
+                            <div><dt>@L["debts.strategy.interest"]</dt><dd class="num">@L.Money(r.TotalInterest)</dd></div>
+                            @if (key != "minimum" && minimum.Possible)
+                            {
+                                <div><dt>@L["debts.strategy.saving"]</dt><dd class="num pos">@L.Money(Math.Max(0, minimum.TotalInterest - r.TotalInterest))</dd></div>
+                            }
+                        </dl>
+                        @if (r.Order.Count > 1)
+                        {
+                            <ol class="small" style="margin:.4rem 0 0;padding-left:1.2rem">
+                                @foreach (var o in r.Order)
+                                {
+                                    <li>@o.Name <span class="muted">– @L.T("calc.payoff.afterMonths", L.Duration(o.Month, dative: true))</span></li>
+                                }
+                            </ol>
+                        }
+                    }
+                </div>
+            }
+        </div>
+    </Results>
+    <Details>
+        @{
+            var series = Strategies.Where(r => r.Result.BalanceTimeline.Count > 0).ToList();
+        }
+        @if (series.Count > 0)
+        {
+            var months = series.Max(s => s.Result.BalanceTimeline.Count);
+            var step = months <= 48 ? 1 : months <= 144 ? 3 : 12;
+            var idx = Enumerable.Range(0, months + 1).Where(k => k % step == 0 || k == months).ToList();
+            var start = _debts.Sum(d => d.Balance);
+            <section class="card" aria-labelledby="po-chart">
+                <div class="card-head"><h2 id="po-chart">@L["debts.strategy.chart"]</h2></div>
+                <LineChart Title="@L["debts.strategy.chart"]" Labels="idx.Select(k => k.ToString()).ToList()" XTitle="@L["col.period"]"
+                           TooltipLabels="@(idx.Select(k => L.T("debts.strategy.month", k)).ToList())"
+                           Series="@(series.Select((s, i) => new ChartSeries(L["debts.strategy." + s.Key], idx.Select(k => k == 0 ? start : k - 1 < s.Result.BalanceTimeline.Count ? s.Result.BalanceTimeline[k - 1] : (decimal?)(s.Result.Possible ? 0 : null)).ToList(), ChartColors.At(i), Dashed: s.Key == "minimum")).ToList())"
+                           Format="v => L.Money(v, decimals: 0)" AxisFormat="v => L.MoneyCompact(v)" Height="240" />
+            </section>
+        }
+    </Details>
+</CalcShell>
+
+@code {
+    private List<StrategyDebt> _debts = [];
+    private decimal _extra = 100;
+
+    protected override void OnInitialized()
+    {
+        _debts =
+        [
+            new StrategyDebt(L["calc.payoff.example1"], 2500, 75, 18),
+            new StrategyDebt(L["calc.payoff.example2"], 9000, 250, 6.5m),
+            new StrategyDebt(L["calc.payoff.example3"], 1200, 50, 11),
+        ];
+    }
+
+    private void Update(int index, StrategyDebt debt) => _debts[index] = debt;
+
+    private void Add() => _debts.Add(new StrategyDebt($"{L["calc.payoff.name"]} {_debts.Count + 1}", 1000, 50, 5));
+
+    private IReadOnlyList<(string Key, StrategyResult Result)> Strategies
+    {
+        get
+        {
+            var valid = _debts.Where(d => d.Balance > 0).ToList();
+            return
+            [
+                ("minimum", DebtStrategy.Simulate(valid, 0, PayoffStrategy.Minimum)),
+                ("snowball", DebtStrategy.Simulate(valid, _extra, PayoffStrategy.Snowball)),
+                ("avalanche", DebtStrategy.Simulate(valid, _extra, PayoffStrategy.Avalanche)),
+            ];
+        }
+    }
+}

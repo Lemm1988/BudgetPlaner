@@ -1,0 +1,45 @@
+@inject Loc L
+@inject AppSession Session
+
+@* Rahmen der öffentlichen Finanzrechner (B-10): Eingaben links, Ergebnis rechts, Details darunter. *@
+<div class="page" style="padding:1rem 0 3rem">
+    <a class="btn btn-ghost btn-sm mb-1" href="/rechner"><Icon Name="chevron-left" />@L["calc.back"]</a>
+    <div class="page-head">
+        <div>
+            <h1>@Title</h1>
+            <p class="lead">@Lead</p>
+        </div>
+        <div class="page-actions"><ShareButtons /></div>
+    </div>
+    <div class="grid grid-2 start">
+        <section class="card" aria-labelledby="calc-in">
+            <div class="card-head"><h2 id="calc-in">@L["calc.inputs"]</h2></div>
+            <div class="form-grid">@Inputs</div>
+        </section>
+        <section class="card calc-result" aria-labelledby="calc-out" aria-live="polite">
+            <div class="card-head"><h2 id="calc-out">@L["calc.result"]</h2></div>
+            @Results
+        </section>
+    </div>
+    @if (Details is not null)
+    {
+        <div class="mt-2">@Details</div>
+    }
+    <div class="notice info mt-2">
+        <Icon Name="sparkles" />
+        <div style="flex:1">
+            <strong>@L["calc.useInApp"]</strong>
+            <p class="small mb-0">@L["calc.useInAppText"]</p>
+        </div>
+        <a class="btn btn-primary" href="@(Session.IsAuthenticated ? "/uebersicht" : "/login")">@(Session.IsAuthenticated ? L["landing.openApp"] : L["landing.start"])</a>
+    </div>
+    <p class="small muted mt-1">@L["calc.disclaimer"]</p>
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string Lead { get; set; } = "";
+    [Parameter] public RenderFragment? Inputs { get; set; }
+    [Parameter] public RenderFragment? Results { get; set; }
+    [Parameter] public RenderFragment? Details { get; set; }
+}

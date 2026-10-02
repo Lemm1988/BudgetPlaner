@@ -1,0 +1,91 @@
+@implements IDisposable
+@inject NotificationCenter Center
+@inject Loc L
+@inject NavigationManager Nav
+
+<div class="menu-wrap">
+    <OutsideClick OnOutside="Close" Active="_open">
+        <button class="icon-btn" aria-label="@AriaLabel" aria-expanded="@(_open ? "true" : "false")" aria-haspopup="dialog" @onclick="Toggle">
+            <Icon Name="bell" />
+            @if (Center.Unread > 0)
+            {
+                <span class="dot-badge" aria-hidden="true">@(Center.Unread > 9 ? "9+" : Center.Unread.ToString())</span>
+            }
+        </button>
+        @if (_open)
+        {
+            <div class="panel" role="dialog" aria-label="@L["nav.notifications"]" @onkeydown="OnKey">
+                <div class="row-between" style="padding:.75rem .9rem">
+                    <strong>@L["nav.notifications"]</strong>
+                    @if (Center.Unread > 0)
+                    {
+                        <button class="btn btn-sm btn-ghost" @onclick="Center.MarkAllAsync">@L["notifications.markAll"]</button>
+                    }
+                </div>
+                @if (Center.Items.Count == 0)
+                {
+                    <p class="muted" style="padding:0 .9rem 1rem">@L["notifications.empty"]</p>
+                }
+                @foreach (var n in Center.Items.Take(8))
+                {
+                    <div class="notif @(n.ReadAt is null ? "unread" : "")">
+                        @if (n.ReadAt is null)
+                        {
+                            <span class="n-dot" aria-hidden="true"></span>
+                        }
+                        <div class="n-body">
+                            <div class="n-title">@n.Title</div>
+                            @if (!string.IsNullOrEmpty(n.Body))
+                            {
+                                <div class="small">@n.Body</div>
+                            }
+                            <div class="row">
+                                <span class="n-time">@L.Ago(n.CreatedAt)</span>
+                                @if (n.Link is not null)
+                                {
+                                    <button class="btn btn-sm btn-ghost" @onclick="() => Open(n)">@L["action.open"]</button>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+                <div style="padding:.6rem .9rem;border-top:1px solid var(--border)">
+                    <a href="/benachrichtigungen" @onclick="Close">@L["notifications.all"]</a>
+                </div>
+            </div>
+        }
+    </OutsideClick>
+</div>
+
+@code {
+    private bool _open;
+
+    private string AriaLabel => Center.Unread > 0 ? L.T("notifications.unread", Center.Unread) : L["nav.notifications"];
+
+    protected override void OnInitialized() => Center.Changed += Refresh;
+
+    private void Toggle() => _open = !_open;
+
+    private void Close()
+    {
+        if (!_open) return;
+        _open = false;
+        StateHasChanged();
+    }
+
+    private void OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") Close();
+    }
+
+    private async Task Open(NotificationDto n)
+    {
+        _open = false;
+        await Center.MarkReadAsync(n.Id);
+        if (n.Link is not null) Nav.NavigateTo(n.Link);
+    }
+
+    private void Refresh() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Center.Changed -= Refresh;
+}

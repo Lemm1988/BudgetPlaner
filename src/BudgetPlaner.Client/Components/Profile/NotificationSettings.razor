@@ -1,0 +1,159 @@
+@inherits AppComponent
+@inject BrowserJs Browser
+
+@* Benachrichtigungen je Art und Kanal einzeln (de)aktivierbar (F-080, F-081); Push wird pro Gerät abonniert. *@
+<div class="stack">
+    <p class="small muted mb-0">@L["profile.notificationsLead"]</p>
+
+    <div class="notice @(_pushActive ? "good" : "info")">
+        <Icon Name="bell" />
+        <div style="flex:1" class="small">
+            @if (!_pushSupported)
+            {
+                @L["profile.pushUnsupported"]
+            }
+            else if (_version is { PushConfigured: false })
+            {
+                @L["profile.pushNotConfigured"]
+            }
+            else if (_permission == "denied")
+            {
+                @L["profile.pushDenied"]
+            }
+            else if (_pushActive)
+            {
+                @L["profile.pushEnabled"]
+            }
+            else
+            {
+                @L["channel.push"]
+            }
+        </div>
+        @if (_pushSupported && _version is not { PushConfigured: false } && _permission != "denied")
+        {
+            @if (_pushActive)
+            {
+                <button class="btn btn-sm" @onclick="DisablePushAsync" disabled="@_busy">@L["profile.pushDisable"]</button>
+            }
+            else
+            {
+                <button class="btn btn-sm btn-primary" @onclick="EnablePushAsync" disabled="@_busy">@L["profile.pushEnable"]</button>
+            }
+        }
+    </div>
+    @if (_version is { SmtpConfigured: false })
+    {
+        <p class="small muted mb-0"><Icon Name="info" /> @L["profile.emailNotConfigured"]</p>
+    }
+
+    @if (_settings is null)
+    {
+        <div class="skeleton" style="height:10rem"></div>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th scope="col">@L["profile.notifType"]</th>
+                        @foreach (var ch in Channels)
+                        {
+                            <th scope="col" class="center">@L.Of(ch)</th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var type in Enum.GetValues<NotificationType>())
+                    {
+                        <tr>
+                            <th scope="row">@L.Of(type)</th>
+                            @foreach (var ch in Channels)
+                            {
+                                var t = type;
+                                var c = ch;
+                                var active = IsActive(t, c);
+                                <td class="center">
+                                    <input type="checkbox" class="table-check" checked="@active" aria-label="@($"{L.Of(t)} – {L.Of(c)}")"
+                                           @onchange="e => ToggleAsync(t, c, e.Value is true)" />
+                                </td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private static readonly NotificationChannel[] Channels = [NotificationChannel.InApp, NotificationChannel.Push, NotificationChannel.Email];
+
+    private List<NotificationSettingDto>? _settings;
+    private VersionInfo? _version;
+    private bool _pushSupported, _pushActive, _busy;
+    private string _permission = "default";
+
+    private sealed record PushSub(string Endpoint, string P256dh, string Auth);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _pushSupported = await Browser.Call<bool>("pushSupported");
+            _permission = await Browser.Call<string>("notificationPermission");
+            _pushActive = _pushSupported && await Browser.Call<string?>("currentPushEndpoint") is not null;
+        }
+        catch (Exception) { _pushSupported = false; }
+        try
+        {
+            _version = await Api.GetAsync<VersionInfo>("api/v1/version");
+            _settings = await Api.GetAsync<List<NotificationSettingDto>>("api/v1/me/notification-settings");
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private bool IsActive(NotificationType t, NotificationChannel c) => _settings?.FirstOrDefault(s => s.Type == t && s.Channel == c)?.Active ?? false;
+
+    private async Task ToggleAsync(NotificationType t, NotificationChannel c, bool active)
+    {
+        try
+        {
+            _settings = await Api.PutAsync<List<NotificationSettingDto>>("api/v1/me/notification-settings", new List<NotificationSettingDto> { new(t, c, active) });
+            Toasts.Success(L["profile.notifSaved"]);
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private async Task EnablePushAsync()
+    {
+        _busy = true;
+        try
+        {
+            var key = await Api.GetAsync<VapidKeyResponse>("api/v1/push/vapid-key");
+            var sub = await Browser.Call<PushSub?>("subscribePush", key.PublicKey);
+            _permission = await Browser.Call<string>("notificationPermission");
+            if (sub is null) return;
+            var device = await Browser.Call<string>("deviceName");
+            await Api.PostAsync("api/v1/me/push-subscriptions", new PushSubscriptionRequest(sub.Endpoint, sub.P256dh, sub.Auth, device));
+            _pushActive = true;
+            Toasts.Success(L["profile.pushSaved"]);
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+
+    private async Task DisablePushAsync()
+    {
+        _busy = true;
+        try
+        {
+            var endpoint = await Browser.Call<string?>("unsubscribePush");
+            if (endpoint is not null) await Api.DeleteAsync("api/v1/me/push-subscriptions?endpoint=" + Uri.EscapeDataString(endpoint));
+            _pushActive = false;
+            Toasts.Info(L["profile.pushRemoved"]);
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+}

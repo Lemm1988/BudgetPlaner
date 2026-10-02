@@ -1,0 +1,80 @@
+@inherits AppComponent
+
+@* Zuweisung bzw. Entnahme (F-041, F-042): Entnahme höchstens bis zum Stand, Grund ist Pflicht. *@
+<Modal Title="@(Withdraw ? L["buffer.withdrawTitle"] : L["buffer.allocateTitle"])" OnClose="OnClose">
+    <ChildContent>
+        <form id="buftx-form" @onsubmit="SaveAsync" @onsubmit:preventDefault="true" class="stack">
+            <p class="muted mb-0">@Buffer.Name · @L.T("buffer.available", L.Money(Balance))</p>
+            <div class="form-grid">
+                <AmountField Label="@L["col.amount"]" Value="_amount" ValueChanged="v => _amount = v" Required="true" />
+                <div class="field">
+                    <label for="buftx-date">@L["buffer.txDate"]</label>
+                    <input id="buftx-date" class="input" type="date" value="@_date.ToString("yyyy-MM-dd")"
+                           @onchange="e => { if (DateOnly.TryParse(e.Value?.ToString(), out var d)) _date = d; }" />
+                </div>
+                <div class="field full">
+                    <label for="buftx-reason">@L["buffer.reason"] @if (Withdraw) { <span aria-hidden="true">*</span> }</label>
+                    <input id="buftx-reason" class="input" @bind="_reason" @bind:event="oninput" maxlength="200" required="@Withdraw"
+                           placeholder="@(Withdraw ? L["buffer.reasonPlaceholderWithdraw"] : L["buffer.reasonPlaceholderAllocate"])" />
+                </div>
+            </div>
+            <div>
+                <label class="check"><input type="checkbox" @bind="_affects" />@(Withdraw ? L["buffer.withdrawToBudget"] : L["buffer.allocateAffects"])</label>
+                <p class="small muted mb-0">@(Withdraw ? L["buffer.withdrawToBudgetHint"] : L["buffer.allocateAffectsHint"])</p>
+            </div>
+            @if (_error is not null)
+            {
+                <p class="form-error" role="alert">@_error</p>
+            }
+        </form>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn" @onclick="OnClose">@L["action.cancel"]</button>
+        <button type="submit" form="buftx-form" class="btn btn-primary" disabled="@_busy">
+            <Icon Name="@(Withdraw ? "arrow-up" : "arrow-down")" />@(Withdraw ? L["buffer.withdraw"] : L["buffer.allocate"])
+        </button>
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter, EditorRequired] public BufferEntry Buffer { get; set; } = default!;
+    [Parameter] public bool Withdraw { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private decimal? _amount;
+    private DateOnly _date;
+    private string? _reason, _error;
+    private bool _affects = true, _busy;
+
+    private decimal Balance => Engine.Buffers.Status(Buffer.Id).Balance;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        _date = Store.Engine.Today;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (_amount is not > 0) { _error = L["err.amount.required"]; return; }
+        _busy = true;
+        try
+        {
+            if (Withdraw)
+            {
+                _error = await Act.WithdrawAsync(Buffer, _amount.Value, _date, _reason ?? "", _affects);
+                if (_error is not null) return;
+                Toasts.Success(L.T("buffer.withdrawn", L.Money(_amount.Value)));
+            }
+            else
+            {
+                await Act.AllocateAsync(Buffer, _amount.Value, _date, string.IsNullOrWhiteSpace(_reason) ? null : _reason.Trim(), _affects);
+                Toasts.Success(L.T("buffer.allocated", L.Money(_amount.Value)));
+            }
+            await OnClose.InvokeAsync();
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+}

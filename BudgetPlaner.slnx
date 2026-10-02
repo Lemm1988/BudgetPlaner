@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/BudgetPlaner.Application/BudgetPlaner.Application.csproj" />
+    <Project Path="src/BudgetPlaner.Client/BudgetPlaner.Client.csproj" />
+    <Project Path="src/BudgetPlaner.Domain/BudgetPlaner.Domain.csproj" />
+    <Project Path="src/BudgetPlaner.Infrastructure/BudgetPlaner.Infrastructure.csproj" />
+    <Project Path="src/BudgetPlaner.Server/BudgetPlaner.Server.csproj" />
+    <Project Path="src/BudgetPlaner.Shared/BudgetPlaner.Shared.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/BudgetPlaner.Domain.Tests/BudgetPlaner.Domain.Tests.csproj" />
+    <Project Path="tests/BudgetPlaner.Server.Tests/BudgetPlaner.Server.Tests.csproj" />
+  </Folder>
+</Solution>

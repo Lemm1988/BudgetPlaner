@@ -1,0 +1,406 @@
+@inherits AppComponent
+@inject ScenarioState State
+@using BudgetPlaner.Client.Components.Charts
+
+@* „Was-wäre-wenn“ (F-075): Änderungen wirken nur auf eine Kopie; Prognosen live; „Verwerfen“ setzt exakt zurück. *@
+<section class="card scenario @(State.IsActive ? "active" : "")" id="szenario" aria-labelledby="sc-title">
+    <div class="card-head">
+        <h2 id="sc-title">@L["scenario.title"] <InfoTip Term="szenario" /></h2>
+        @if (State.IsActive)
+        {
+            <span class="badge accent"><Icon Name="sparkles" />@L["scenario.badge"]</span>
+        }
+    </div>
+    <p class="small muted">@L["scenario.lead"]</p>
+
+    @if (State.Scenario.Changes.Count == 0)
+    {
+        <p class="muted">@L["scenario.empty"]</p>
+    }
+    else
+    {
+        <ul class="list mb-1">
+            @foreach (var c in State.Scenario.Changes)
+            {
+                var change = c;
+                <li class="list-row">
+                    <Icon Name="@IconOf(change)" />
+                    <span class="grow">@Summary(change)</span>
+                    <button class="icon-btn sm" aria-label="@L["scenario.remove"]" @onclick="() => State.Remove(change.Id)"><Icon Name="x" /></button>
+                </li>
+            }
+        </ul>
+    }
+
+    <fieldset class="card soft flat">
+        <legend>@L["scenario.add"]</legend>
+        <form class="stack" @onsubmit="AddChange" @onsubmit:preventDefault="true">
+            <div class="form-grid">
+                <div class="field">
+                    <label for="sc-type">@L["scenario.field.kind"]</label>
+                    <select id="sc-type" class="select" @bind="_type">
+                        @foreach (var t in Types)
+                        {
+                            <option value="@t">@L["scenario.type." + t]</option>
+                        }
+                    </select>
+                </div>
+                @switch (_type)
+                {
+                    case "scaleIncome":
+                        <PercentField Value="_percent" ValueChanged="v => _percent = v" />
+                        break;
+                    case "scaleExpenses":
+                        <PercentField Value="_percent" ValueChanged="v => _percent = v" />
+                        <div class="field">
+                            <label for="sc-cat">@L["scenario.field.category"]</label>
+                            <select id="sc-cat" class="select" @bind="_category">
+                                <option value="">@L["scenario.field.allCategories"]</option>
+                                @foreach (var cat in Ix.Categories.Where(x => x.Type == CategoryType.Expense && x.ParentId is null))
+                                {
+                                    <option value="@cat.Id">@L.Cat(cat)</option>
+                                }
+                            </select>
+                        </div>
+                        break;
+                    case "entryAmount":
+                    case "pauseEntry":
+                    case "endEntry":
+                        <div class="field">
+                            <label for="sc-entry">@L["scenario.field.entry"] <span aria-hidden="true">*</span></label>
+                            <select id="sc-entry" class="select" @bind="_entry">
+                                <option value="">@L["scenario.field.choose"]</option>
+                                @foreach (var group in ActiveEntries.GroupBy(e => e.Kind))
+                                {
+                                    <optgroup label="@L.Of(group.Key)">
+                                        @foreach (var e in group)
+                                        {
+                                            <option value="@e.Id">@e.Name (@L.Money(Act.NominalAmount(e, Period.Max(Current, e.StartPeriod))))</option>
+                                        }
+                                    </optgroup>
+                                }
+                            </select>
+                        </div>
+                        @if (_type == "entryAmount")
+                        {
+                            <AmountField Label="@L["scenario.field.amount"]" Value="_amount" ValueChanged="v => _amount = v" Required="true" />
+                        }
+                        break;
+                    case "addEntry":
+                        <div class="field">
+                            <label for="sc-name">@L["scenario.field.name"] <span aria-hidden="true">*</span></label>
+                            <input id="sc-name" class="input" @bind="_name" maxlength="120" />
+                        </div>
+                        <div class="field">
+                            <label for="sc-kind">@L["entry.kind"]</label>
+                            <select id="sc-kind" class="select" value="@_kind" @onchange="e => SetKind(e.Value?.ToString())">
+                                <option value="@EntryKind.Expense">@L.Of(EntryKind.Expense)</option>
+                                <option value="@EntryKind.Income">@L.Of(EntryKind.Income)</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label for="sc-cat2">@L["scenario.field.category"]</label>
+                            <select id="sc-cat2" class="select" @bind="_category">
+                                @foreach (var cat in Ix.Categories.Where(x => x.Type == (_kind == EntryKind.Income ? CategoryType.Income : CategoryType.Expense)))
+                                {
+                                    <option value="@cat.Id">@(cat.ParentId is { } pid ? L.Cat(pid) + " › " : "")@L.Cat(cat)</option>
+                                }
+                            </select>
+                        </div>
+                        <AmountField Label="@L["col.amount"]" Value="_amount" ValueChanged="v => _amount = v" Required="true" />
+                        <div class="field">
+                            <label for="sc-rhythm">@L["scenario.field.rhythm"]</label>
+                            <select id="sc-rhythm" class="select" @bind="_rhythm">
+                                @foreach (var r in new[] { Rhythm.Monthly, Rhythm.Quarterly, Rhythm.HalfYearly, Rhythm.Yearly, Rhythm.Once })
+                                {
+                                    <option value="@r">@L.Of(r)</option>
+                                }
+                            </select>
+                        </div>
+                        break;
+                    case "debtRate":
+                    case "debtExtra":
+                        <div class="field">
+                            <label for="sc-debt">@L["scenario.field.debt"] <span aria-hidden="true">*</span></label>
+                            <select id="sc-debt" class="select" @bind="_debt">
+                                <option value="">@L["scenario.field.choose"]</option>
+                                @foreach (var d in Ix.Debts.Where(d => !Engine.Debts.Status(d.Id).IsPaidOff))
+                                {
+                                    <option value="@d.Id">@d.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <AmountField Label="@(_type == "debtRate" ? L["scenario.field.rate"] : L["scenario.field.extra"])" Value="_amount" ValueChanged="v => _amount = v" Required="true" />
+                        break;
+                    case "bufferPlan":
+                        <div class="field">
+                            <label for="sc-buffer">@L["scenario.field.buffer"] <span aria-hidden="true">*</span></label>
+                            <select id="sc-buffer" class="select" @bind="_buffer">
+                                <option value="">@L["scenario.field.choose"]</option>
+                                @foreach (var b in Ix.Buffers)
+                                {
+                                    <option value="@b.Id">@b.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <AmountField Label="@L["scenario.field.plan"]" Value="_amount" ValueChanged="v => _amount = v" Required="true" />
+                        break;
+                }
+                <div class="field">
+                    <label for="sc-from">@L["scenario.field.from"]</label>
+                    <input id="sc-from" class="input" type="month" value="@_from" @onchange="e => { if (Period.TryParse(e.Value?.ToString(), out var p)) _from = p; }" />
+                </div>
+                @if (_type is "pauseEntry" or "debtExtra" or "addEntry")
+                {
+                    <div class="field">
+                        <label for="sc-to">@L["scenario.field.to"]</label>
+                        <input id="sc-to" class="input" type="month" value="@(_to?.ToString() ?? "")" @onchange="e => _to = Period.TryParse(e.Value?.ToString(), out var p) ? p : null" />
+                    </div>
+                }
+            </div>
+            @if (_error is not null)
+            {
+                <p class="form-error" role="alert">@_error</p>
+            }
+            <div><button type="submit" class="btn"><Icon Name="plus" />@L["scenario.addConfirm"]</button></div>
+        </form>
+    </fieldset>
+
+    @if (State.IsActive && _sim is not null)
+    {
+        var real = Metrics(Engine);
+        var sim = Metrics(_sim);
+        <h3 class="mt-2">@L["scenario.compare"]</h3>
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th scope="col"></th>
+                        <th scope="col" class="num">@L["scenario.current"]</th>
+                        <th scope="col" class="num">@L["scenario.simulated"]</th>
+                        <th scope="col" class="num">@L["scenario.diff"]</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @MoneyRow(L["scenario.metric.surplus"], real.AvgSurplus, sim.AvgSurplus)
+                    @MoneyRow(L["scenario.metric.balance12"], real.Balance12, sim.Balance12)
+                    @MoneyRow(L["scenario.metric.lowest"], real.Lowest, sim.Lowest)
+                    @if (Ix.Debts.Count > 0)
+                    {
+                        @PeriodRow(L["scenario.metric.debtFree"], real.DebtFree, sim.DebtFree)
+                        @MoneyRow(L["scenario.metric.interest"], real.Interest, sim.Interest, lowerIsBetter: true)
+                    }
+                    @MoneyRow(L.T("scenario.metric.yearSurplus", Current.Year), real.YearSurplus, sim.YearSurplus)
+                    <tr>
+                        <th scope="row">@L.T("scenario.metric.savingsRate", Current.Year)</th>
+                        <td class="num">@L.Pct(real.SavingsRate)</td>
+                        <td class="num">@L.Pct(sim.SavingsRate)</td>
+                        <td class="num">@(real.SavingsRate is { } a && sim.SavingsRate is { } b ? L.Num(b - a, 1) + " " + L["unit.points"] : "–")</td>
+                    </tr>
+                    @foreach (var (name, r, s) in real.Goals.Zip(sim.Goals, (x, y) => (x.Name, x.Goal, y.Goal)))
+                    {
+                        @PeriodRow(L.T("scenario.metric.goal", name), r, s)
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="mt-2">
+            <LineChart Title="@L["scenario.chart"]" Labels="real.Months.Select(p => L.Period(p.Period, shortName: true)).ToList()"
+                       TooltipLabels="real.Months.Select(p => L.Period(p.Period)).ToList()"
+                       Series="@(new List<ChartSeries> { new(L["scenario.current"], real.Months.Select(p => (decimal?)p.EndBalance).ToList(), ChartColors.At(0)), new(L["scenario.simulated"], sim.Months.Select(p => (decimal?)p.EndBalance).ToList(), ChartColors.At(1), Dashed: true) })"
+                       Format="v => L.Money(v)" AxisFormat="v => L.MoneyCompact(v)" Height="220" />
+        </div>
+        <div class="row mt-2" style="justify-content:flex-end">
+            <button class="btn" @onclick="Discard"><Icon Name="undo" />@L["scenario.discard"]</button>
+            <button class="btn btn-primary" @onclick="ApplyAsync" disabled="@_busy"><Icon Name="check" />@L["scenario.apply"]</button>
+        </div>
+    }
+</section>
+
+@code {
+    private static readonly string[] Types = ["scaleIncome", "scaleExpenses", "entryAmount", "pauseEntry", "endEntry", "addEntry", "debtRate", "debtExtra", "bufferPlan"];
+
+    private string _type = "scaleIncome";
+    private decimal? _percent, _amount;
+    private string _category = "", _entry = "", _debt = "", _buffer = "", _name = "";
+    private EntryKind _kind = EntryKind.Expense;
+    private Rhythm _rhythm = Rhythm.Monthly;
+    private Period _from;
+    private Period? _to;
+    private string? _error;
+    private bool _busy;
+    private HouseholdEngine? _sim;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        _from = Current.Next;
+        State.Changed += OnScenarioChanged;
+        Recompute();
+    }
+
+    protected override void OnDataChanged() => Recompute();
+
+    private void OnScenarioChanged()
+    {
+        Recompute();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void Recompute() =>
+        _sim = State.IsActive ? new HouseholdEngine(ScenarioApplier.Apply(Store.Data, State.Scenario, DateTimeOffset.UtcNow), Store.Engine.Today) : null;
+
+    public override void Dispose()
+    {
+        State.Changed -= OnScenarioChanged;
+        base.Dispose();
+    }
+
+    private IEnumerable<BudgetEntry> ActiveEntries => Ix.Entries
+        .Where(e => e.EndPeriod is null || e.EndPeriod >= Current)
+        .Where(e => e.DebtId is null && e.BufferId is null)
+        .OrderBy(e => e.Kind).ThenBy(e => e.Name, StringComparer.CurrentCulture);
+
+    private void SetKind(string? v)
+    {
+        if (!Enum.TryParse<EntryKind>(v, out var k)) return;
+        _kind = k;
+        _category = "";
+    }
+
+    private void AddChange()
+    {
+        _error = null;
+        Guid? G(string s) => Guid.TryParse(s, out var g) ? g : null;
+        ScenarioChange? change = _type switch
+        {
+            "scaleIncome" when _percent is { } p => new ScaleIncome(p, _from),
+            "scaleExpenses" when _percent is { } p => new ScaleExpenses(p, _from, G(_category)),
+            "entryAmount" when G(_entry) is { } e && _amount is { } a => new ChangeEntryAmount(e, a, _from),
+            "pauseEntry" when G(_entry) is { } e => new PauseEntry(e, _from, _to is { } t && t >= _from ? t : null),
+            "endEntry" when G(_entry) is { } e => new EndEntry(e, _from),
+            "addEntry" when !string.IsNullOrWhiteSpace(_name) && _amount is > 0 => new AddEntry(_name.Trim(), _kind, CategoryFor(_kind), _amount.Value, _rhythm, _from,
+                _rhythm == Rhythm.Once ? null : _to, null, _kind == EntryKind.Income),
+            "debtRate" when G(_debt) is { } d && _amount is { } a => new ChangeDebtRate(d, a, _from),
+            "debtExtra" when G(_debt) is { } d && _amount is > 0 => new AddDebtExtra(d, _amount.Value, _from, _to),
+            "bufferPlan" when G(_buffer) is { } b && _amount is { } a => new ChangeBufferPlan(b, a, _from),
+            _ => null,
+        };
+        if (change is null) { _error = L["err.scenario.incomplete"]; return; }
+        State.Add(change);
+        _percent = null; _amount = null; _name = ""; _to = null;
+    }
+
+    private Guid CategoryFor(EntryKind kind)
+    {
+        if (Guid.TryParse(_category, out var g) && Ix.CategoryById.ContainsKey(g)) return g;
+        var type = kind == EntryKind.Income ? CategoryType.Income : CategoryType.Expense;
+        return Ix.Categories.First(c => c.Type == type).Id;
+    }
+
+    private string EntryName(Guid id) => Ix.AllEntryById.GetValueOrDefault(id)?.Name ?? "?";
+
+    private static string IconOf(ScenarioChange c) => c switch
+    {
+        ScaleIncome => "trend-up",
+        ScaleExpenses => "percent",
+        ChangeEntryAmount => "edit",
+        PauseEntry => "pause",
+        EndEntry => "x-circle",
+        AddEntry => "plus",
+        ChangeDebtRate or AddDebtExtra => "debt",
+        ChangeBufferPlan => "piggy",
+        _ => "dot",
+    };
+
+    private string Summary(ScenarioChange c) => c switch
+    {
+        ScaleIncome s => L.T("scenario.summary.scaleIncome", L.Pct(s.Percent, 1, plus: true), L.Period(s.From)),
+        ScaleExpenses s when s.CategoryId is { } cat => L.T("scenario.summary.scaleExpensesCat", L.Pct(s.Percent, 1, plus: true), L.Period(s.From), L.Cat(cat)),
+        ScaleExpenses s => L.T("scenario.summary.scaleExpenses", L.Pct(s.Percent, 1, plus: true), L.Period(s.From)),
+        ChangeEntryAmount s => L.T("scenario.summary.entryAmount", EntryName(s.EntryId), L.Money(s.Amount), L.Period(s.From)),
+        PauseEntry s when s.To is { } to => L.T("scenario.summary.pauseEntryTo", EntryName(s.EntryId), L.Period(s.From), L.Period(to)),
+        PauseEntry s => L.T("scenario.summary.pauseEntry", EntryName(s.EntryId), L.Period(s.From)),
+        EndEntry s => L.T("scenario.summary.endEntry", EntryName(s.EntryId), L.Period(s.From)),
+        AddEntry s => L.T("scenario.summary.addEntry", s.Name, L.Money(s.Amount), L.Of(s.Rhythm), L.Period(s.Start)),
+        ChangeDebtRate s => L.T("scenario.summary.debtRate", Ix.DebtById.GetValueOrDefault(s.DebtId)?.Name ?? "?", L.Money(s.NewRate), L.Period(s.From)),
+        AddDebtExtra s => L.T("scenario.summary.debtExtra", Ix.DebtById.GetValueOrDefault(s.DebtId)?.Name ?? "?", L.Money(s.MonthlyExtra), L.Period(s.From)),
+        ChangeBufferPlan s => L.T("scenario.summary.bufferPlan", Ix.BufferById.GetValueOrDefault(s.BufferId)?.Name ?? "?", L.Money(s.MonthlyAmount), L.Period(s.From)),
+        _ => c.GetType().Name,
+    };
+
+    private sealed record ScenarioMetrics(decimal AvgSurplus, decimal Balance12, decimal Lowest, Period? DebtFree, decimal Interest,
+        decimal YearSurplus, decimal? SavingsRate, IReadOnlyList<BalanceForecastPoint> Months, IReadOnlyList<(string Name, Period? Goal)> Goals);
+
+    private ScenarioMetrics Metrics(HouseholdEngine e)
+    {
+        var current = e.CurrentPeriod;
+        var avg = Enumerable.Range(0, 12).Select(i => e.Totals(current.AddMonths(i)).Surplus).Average();
+        var balance = e.Forecasts.Balance(12);
+        var debtFree = e.Forecasts.DebtFree();
+        var year = e.Forecasts.YearEnd(current.Year);
+        var goals = e.Index.Buffers.Where(b => b.TargetAmount is > 0).OrderBy(b => b.SortIndex)
+            .Select(b =>
+            {
+                var s = e.Buffers.Status(b.Id);
+                return (b.Name, s.GoalReached ? current : s.Forecast.Possible ? s.Forecast.GoalPeriod : null);
+            }).ToList();
+        return new ScenarioMetrics(MoneyMath.Round2(avg), balance.Months[^1].EndBalance, balance.Months.Min(m => m.MinBalance),
+            debtFree.Possible ? debtFree.PayoffPeriod ?? current : null, debtFree.TotalInterest, year.ProjectedSurplus, year.ProjectedSavingsRate,
+            balance.Months, goals);
+    }
+
+    private RenderFragment MoneyRow(string label, decimal real, decimal sim, bool lowerIsBetter = false)
+    {
+        var diff = sim - real;
+        var good = lowerIsBetter ? diff < 0 : diff > 0;
+        return @<tr>
+            <th scope="row">@label</th>
+            <td class="num">@L.Money(real)</td>
+            <td class="num">@L.Money(sim)</td>
+            <td class="num @(diff == 0 ? "" : good ? "pos" : "neg")">@(diff == 0 ? L["scenario.same"] : L.Money(diff, plus: true))</td>
+        </tr>;
+    }
+
+    private RenderFragment PeriodRow(string label, Period? real, Period? sim)
+    {
+        string Text(Period? p) => p is { } x ? L.Period(x) : L["debts.notForeseeable"];
+        var diff = real is { } a && sim is { } b ? Period.MonthsBetween(a, b) : (int?)null;
+        var cls = diff is null or 0 ? "" : diff < 0 ? "pos" : "neg";
+        var diffText = diff switch
+        {
+            null => "–",
+            0 => L["scenario.same"],
+            < 0 => L.T("scenario.earlier", L.Duration(-diff.Value)),
+            _ => L.T("scenario.later", L.Duration(diff.Value)),
+        };
+        return @<tr>
+            <th scope="row">@label</th>
+            <td class="num">@Text(real)</td>
+            <td class="num">@Text(sim)</td>
+            <td class="num @cls">@diffText</td>
+        </tr>;
+    }
+
+    private void Discard()
+    {
+        State.Clear();
+        Toasts.Info(L["scenario.discarded"]);
+    }
+
+    private async Task ApplyAsync()
+    {
+        var applied = ScenarioApplier.Apply(Store.Data, State.Scenario, DateTimeOffset.UtcNow);
+        var (upserts, deletes) = ScenarioApplier.Diff(Store.Data, applied);
+        if (!await Confirm.AskAsync(L["scenario.applyTitle"], L.T("scenario.applyText", upserts.Count + deletes.Count), L["scenario.apply"])) return;
+        _busy = true;
+        try
+        {
+            await Store.MutateAsync(upserts.Select(Change.Save).Concat(deletes.Select(Change.Remove)).ToList());
+            State.Clear();
+            Toasts.Success(L["scenario.applied"]);
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+}

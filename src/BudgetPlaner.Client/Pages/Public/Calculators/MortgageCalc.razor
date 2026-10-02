@@ -1,0 +1,46 @@
+@page "/rechner/baufinanzierung"
+@layout PublicLayout
+@inject Loc L
+@using BudgetPlaner.Domain.Calculators
+
+<PageTitle>@L["calc.mortgage.title"] · @L["app.name"]</PageTitle>
+
+<CalcShell Title="@L["calc.mortgage.title"]" Lead="@L["calc.mortgage.short"]">
+    <Inputs>
+        <AmountField Label="@L["calc.mortgage.price"]" Value="_price" ValueChanged="v => _price = Math.Max(0, v ?? 0)" />
+        <AmountField Label="@L["calc.mortgage.equity"]" Value="_equity" ValueChanged="v => _equity = Math.Max(0, v ?? 0)" />
+        <PercentField Label="@L["calc.mortgage.closing"]" Value="_closing" ValueChanged="v => _closing = Math.Clamp(v ?? 0, 0, 25)" Hint="" />
+        <PercentField Label="@L["calc.mortgage.rate"]" Value="_rate" ValueChanged="v => _rate = Math.Clamp(v ?? 0, 0, 20)" Hint="" />
+        <PercentField Label="@L["calc.mortgage.repayment"]" Value="_repayment" ValueChanged="v => _repayment = Math.Clamp(v ?? 0, 0, 20)" Hint="" />
+        <NumberField Label="@L["calc.mortgage.fixed"]" Value="_fixed" ValueChanged="v => _fixed = Math.Clamp((int)v, 1, 40)" />
+        <AmountField Label="@L["calc.mortgage.special"]" Value="_special" ValueChanged="v => _special = Math.Max(0, v ?? 0)" />
+    </Inputs>
+    <Results>
+        @{
+            var r = R;
+        }
+        <div class="stat mb-2">
+            <span class="stat-label">@L["calc.mortgage.payment"]</span>
+            <span class="stat-value">@L.Money(r.MonthlyPayment)</span>
+        </div>
+        <div class="result-grid">
+            <div class="stat"><span class="stat-label">@L["calc.mortgage.closingCosts"]</span><span class="stat-value sm">@L.Money(r.ClosingCosts, decimals: 0)</span></div>
+            <div class="stat"><span class="stat-label">@L["calc.mortgage.loan"]</span><span class="stat-value sm">@L.Money(r.LoanAmount, decimals: 0)</span></div>
+            <div class="stat"><span class="stat-label">@L["calc.mortgage.ltv"]</span><span class="stat-value sm">@L.Pct(r.LoanToValuePercent)</span></div>
+            <div class="stat"><span class="stat-label">@L["calc.mortgage.remaining"] <InfoTip Term="zinsbindung" /></span><span class="stat-value sm">@L.Money(r.RemainingAfterFixedPeriod, decimals: 0)</span></div>
+            <div class="stat"><span class="stat-label">@L["calc.mortgage.interestFixed"]</span><span class="stat-value sm">@L.Money(r.InterestDuringFixedPeriod, decimals: 0)</span></div>
+            <div class="stat"><span class="stat-label">@L["calc.mortgage.duration"]</span><span class="stat-value sm @(r.MonthsToPayoff is null ? "neg" : "")">@(r.MonthsToPayoff is { } m ? L.Duration(m) : L["calc.mortgage.never"])</span></div>
+            <div class="stat"><span class="stat-label">@L["calc.mortgage.totalInterest"]</span><span class="stat-value sm">@L.Money(r.TotalInterest, decimals: 0)</span></div>
+        </div>
+    </Results>
+    <Details>
+        <AmortizationTable Years="R.Years" Title="@L["debt.schedule"]" />
+    </Details>
+</CalcShell>
+
+@code {
+    private decimal _price = 400000, _equity = 80000, _closing = 10, _rate = 3.6m, _repayment = 2, _special;
+    private int _fixed = 10;
+
+    private MortgageResult R => FinanceCalculators.Mortgage(_price, _equity, _closing, _rate, _repayment, _fixed, _special);
+}

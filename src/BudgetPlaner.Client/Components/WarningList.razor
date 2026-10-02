@@ -1,0 +1,61 @@
+@inherits AppComponent
+
+@* Frühwarnungen (F-073) – werden live berechnet und verschwinden nach Behebung. *@
+@if (Items.Count > 0)
+{
+    <div class="stack-sm" role="region" aria-label="@L["warnings.title"]">
+        @foreach (var w in Items)
+        {
+            <div class="notice @(w.Severity == AmpelStatus.Red ? "bad" : "warn")">
+                <Icon Name="@(w.Severity == AmpelStatus.Red ? "alert" : "warning")" />
+                <div style="flex:1;min-width:0">
+                    <strong>@Title(w)</strong>
+                    <p class="small mb-0">@Body(w)</p>
+                </div>
+                <a class="btn btn-sm" href="@Link(w)">@L["action.open"]</a>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public int Max { get; set; } = 5;
+
+    private List<Warning> Items => Engine.Forecasts.Warnings().OrderByDescending(w => w.Severity).Take(Max).ToList();
+
+    private string M(decimal? v) => L.Money(v ?? 0);
+
+    private string Title(Warning w) => w.Type switch
+    {
+        NotificationType.BudgetOverplanned => L["notif.budgetOverplanned.title"],
+        NotificationType.BudgetEarlyWarning => L["notif.budgetEarlyWarning.title"],
+        NotificationType.CategoryOverrun => L.T("notif.categoryOverrun.title", L.Cat(w.SubjectId)),
+        NotificationType.NegativeBalanceForecast => L["notif.negativeBalanceForecast.title"],
+        NotificationType.FixedCostRatioHigh => L["notif.fixedCostRatioHigh.title"],
+        NotificationType.DebtRateDue when w.Key.StartsWith("debtinterest") => L.T("notif.debtInterest.title", w.Subject ?? ""),
+        NotificationType.DebtRateDue => L.T("notif.debtRateDue.title", w.Subject ?? ""),
+        _ => L.Of(w.Type),
+    };
+
+    private string Body(Warning w) => w.Type switch
+    {
+        NotificationType.BudgetOverplanned => L.T("notif.budgetOverplanned.body", L.Period(Current), M(-(w.Amount1 ?? 0))),
+        NotificationType.BudgetEarlyWarning => L.T("notif.budgetEarlyWarning.body", M(w.Amount1), M(w.Amount2)),
+        NotificationType.CategoryOverrun => L.T("notif.categoryOverrun.body", L.Cat(w.SubjectId), M(w.Amount1), M(w.Amount2)),
+        NotificationType.NegativeBalanceForecast => L.T("notif.negativeBalanceForecast.body", w.Date is { } d ? L.Date(d) : "", M(w.Amount1)),
+        NotificationType.FixedCostRatioHigh => L.T("notif.fixedCostRatioHigh.body", L.Pct(w.Amount1), L.Pct(w.Amount2, 0)),
+        NotificationType.DebtRateDue when w.Key.StartsWith("debtinterest") => L.T("notif.debtInterest.body", w.Subject ?? "", M(w.Amount1), M(w.Amount2)),
+        NotificationType.DebtRateDue => L.T("notif.debtRateDue.body", w.Subject ?? "", M(w.Amount1)),
+        _ => "",
+    };
+
+    private string Link(Warning w) => w.Type switch
+    {
+        NotificationType.BudgetOverplanned or NotificationType.CategoryOverrun => "/budget",
+        NotificationType.BudgetEarlyWarning => "/prognosen",
+        NotificationType.NegativeBalanceForecast => "/cashflow",
+        NotificationType.FixedCostRatioHigh => "/statistik",
+        NotificationType.DebtRateDue => $"/schulden/{w.SubjectId}",
+        _ => "/uebersicht",
+    };
+}

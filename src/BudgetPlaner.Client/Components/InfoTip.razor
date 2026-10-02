@@ -1,0 +1,64 @@
+@inject Loc L
+@inject AppSession Session
+
+@* Kontextbezogener Hilfetext zu einem Fachbegriff (F-141): Info-Icon mit Popover, schließt bei Klick außerhalb und mit Esc. *@
+<span class="info">
+    <OutsideClick OnOutside="Close" Active="_open">
+        <span style="position:relative;display:inline-flex">
+            <button type="button" class="info-btn" aria-label="@L.T("help.infoAbout", TitleText)" aria-expanded="@(_open ? "true" : "false")"
+                    aria-controls="@_id" @onclick="Toggle" @onclick:stopPropagation="true" @onkeydown="OnKey">
+                <Icon Name="info" />
+            </button>
+            @if (_open)
+            {
+                <span class="popover @AlignClass" id="@_id" role="tooltip">
+                    <strong>@TitleText</strong>
+                    @BodyText
+                    @if (Formula is not null)
+                    {
+                        <span class="formula">@Formula</span>
+                    }
+                    @if (ChildContent is not null)
+                    {
+                        <span style="display:block;margin-top:.4rem">@ChildContent</span>
+                    }
+                    @if (Term is not null)
+                    {
+                        <a href="@(Session.IsAuthenticated ? $"/hilfe#g-{Term}" : $"/glossar#g-{Term}")" style="display:block;margin-top:.45rem;font-size:.85rem">@L["help.moreInGlossary"]</a>
+                    }
+                </span>
+            }
+        </span>
+    </OutsideClick>
+</span>
+
+@code {
+    private readonly string _id = "tip-" + Guid.NewGuid().ToString("N")[..8];
+    private bool _open;
+
+    /// <summary>Glossar-Schlüssel (glossary.{Term}.title / .short).</summary>
+    [Parameter] public string? Term { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Text { get; set; }
+    [Parameter] public string? Formula { get; set; }
+    [Parameter] public string Align { get; set; } = "center";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private string TitleText => Title ?? (Term is not null ? L[$"glossary.{Term}.title"] : "");
+    private string BodyText => Text ?? (Term is not null ? L[$"glossary.{Term}.short"] : "");
+    private string AlignClass => Align switch { "left" => "align-left", "right" => "align-right", _ => "" };
+
+    private void Toggle() => _open = !_open;
+
+    private void Close()
+    {
+        if (!_open) return;
+        _open = false;
+        StateHasChanged();
+    }
+
+    private void OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") Close();
+    }
+}

@@ -1,0 +1,285 @@
+@page "/haushalt"
+@inherits AppComponent
+@inject BrowserJs Browser
+@using BudgetPlaner.Client.Components.Profile
+
+<PageTitle>@L["nav.household"] · @L["app.name"]</PageTitle>
+
+<div class="page-narrow">
+    <div class="page-head">
+        <div>
+            <h1>@(Store.Data.Household.Name is { Length: > 0 } n ? n : L["nav.household"])</h1>
+            <p class="lead">@L["household.lead"]</p>
+        </div>
+    </div>
+
+    <div class="stack">
+        <section class="card" aria-labelledby="hh-members">
+            <div class="card-head"><h2 id="hh-members">@L["household.members"] <InfoTip Term="haushalt" /></h2></div>
+            @if (_info is null)
+            {
+                <div class="skeleton" style="height:5rem"></div>
+            }
+            else
+            {
+                <ul class="list">
+                    @foreach (var m in _info.Members.OrderByDescending(x => x.Role == Role.Owner).ThenBy(x => x.Name))
+                    {
+                        var member = m;
+                        var me = member.UserId == Session.User?.Id;
+                        <li class="list-row">
+                            <span class="member-avatar" aria-hidden="true">@Initial(member.Name)</span>
+                            <div class="grow">
+                                <div>@member.Name @if (me) { <span class="muted">(@L["household.you"])</span> }</div>
+                                <div class="small muted">@member.Email · @L.Of(member.Role) · @L.T("household.memberSince", L.Date(DateOnly.FromDateTime(member.JoinedAt.LocalDateTime)))</div>
+                            </div>
+                            @if (IsOwner && !me)
+                            {
+                                <div class="row" style="gap:.25rem">
+                                    <button class="btn btn-sm" @onclick="() => TransferAsync(member)">@L["household.makeOwner"]</button>
+                                    <button class="btn btn-sm btn-ghost" @onclick="() => RemoveAsync(member)">@L["household.remove"]</button>
+                                </div>
+                            }
+                        </li>
+                    }
+                </ul>
+            }
+        </section>
+
+        <section class="card" aria-labelledby="hh-invite">
+            <div class="card-head"><h2 id="hh-invite">@L["household.invite"]</h2></div>
+            <p class="small muted">@L["household.inviteLead"]</p>
+            <form class="row" @onsubmit="InviteAsync" @onsubmit:preventDefault="true">
+                <label for="hh-mail" class="sr-only">@L["household.inviteEmail"]</label>
+                <input id="hh-mail" class="input" type="email" inputmode="email" @bind="_inviteEmail" placeholder="@L["household.inviteEmail"]" style="flex:1;min-width:14rem" />
+                <button type="submit" class="btn btn-primary" disabled="@_busy"><Icon Name="mail" />@L["household.inviteCreate"]</button>
+            </form>
+            <h3 class="mt-2">@L["household.invitations"]</h3>
+            @if (_invitations is { Count: > 0 })
+            {
+                <ul class="list">
+                    @foreach (var i in _invitations)
+                    {
+                        var inv = i;
+                        <li class="list-row">
+                            <Icon Name="link" />
+                            <div class="grow">
+                                <div class="truncate">@(inv.Email ?? L["household.linkInvite"])</div>
+                                <div class="small muted">@L.T("household.validUntil", L.DateTime(inv.ExpiresAt))</div>
+                            </div>
+                            <div class="row" style="gap:.25rem">
+                                <button class="btn btn-sm" @onclick="() => CopyAsync(inv.Link)"><Icon Name="copy" />@L["household.copyLink"]</button>
+                                <ShareButtons Message="@L["household.shareText"]" ShareUrl="@inv.Link" ButtonClass="btn btn-sm" />
+                                <button class="btn btn-sm btn-ghost" @onclick="() => RevokeInviteAsync(inv)">@L["household.revokeInvite"]</button>
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+            else
+            {
+                <p class="small muted mb-0">@L["household.noInvitations"]</p>
+            }
+        </section>
+
+        <section class="card" aria-labelledby="hh-settings">
+            <div class="card-head"><h2 id="hh-settings">@L["household.settings"]</h2></div>
+            <HouseholdBasics ShowName="true" />
+        </section>
+
+        <section class="card" aria-labelledby="hh-ampel">
+            <div class="card-head">
+                <h2 id="hh-ampel">@L["household.ampel"] <InfoTip Term="ampel" /></h2>
+                @if (IsOwner)
+                {
+                    <button class="btn btn-sm btn-ghost" @onclick="ResetRulesAsync">@L["household.ampelReset"]</button>
+                }
+            </div>
+            <p class="small muted">@L["household.ampelLead"]</p>
+            <form class="stack" @onsubmit="SaveRulesAsync" @onsubmit:preventDefault="true">
+                <fieldset disabled="@(!IsOwner)" class="stack">
+                    <legend class="label">@L["household.ampel.targets"]</legend>
+                    <div class="rules-grid">
+                        <PercentField Label="@L["household.ampel.needs"]" Value="_r.TargetNeedsPercent" ValueChanged="v => _r = _r with { TargetNeedsPercent = v ?? 50 }" Hint="" />
+                        <PercentField Label="@L["household.ampel.wants"]" Value="_r.TargetWantsPercent" ValueChanged="v => _r = _r with { TargetWantsPercent = v ?? 30 }" Hint="" />
+                        <PercentField Label="@L["household.ampel.savings"]" Value="_r.TargetSavingsPercent" ValueChanged="v => _r = _r with { TargetSavingsPercent = v ?? 20 }" Hint="" />
+                    </div>
+                    @if (_r.TargetNeedsPercent + _r.TargetWantsPercent + _r.TargetSavingsPercent != 100)
+                    {
+                        <p class="small neg mb-0" role="status">@L.T("household.ampel.targetsSum", L.Pct(_r.TargetNeedsPercent + _r.TargetWantsPercent + _r.TargetSavingsPercent, 0))</p>
+                    }
+                    <div class="rules-grid">
+                        <NumberField Label="@L["household.ampel.hintPoints"]" Value="_r.FiftyThirtyTwentyHintPoints" ValueChanged="v => _r = _r with { FiftyThirtyTwentyHintPoints = v }" />
+                        <NumberField Label="@L["household.ampel.debtGreen"]" Value="_r.DebtServiceGreenMaxPercent" ValueChanged="v => _r = _r with { DebtServiceGreenMaxPercent = v }" />
+                        <NumberField Label="@L["household.ampel.debtYellow"]" Value="_r.DebtServiceYellowMaxPercent" ValueChanged="v => _r = _r with { DebtServiceYellowMaxPercent = v }" />
+                        <NumberField Label="@L["household.ampel.bufferGreen"]" Value="_r.BufferGreenMonths" ValueChanged="v => _r = _r with { BufferGreenMonths = v }" />
+                        <NumberField Label="@L["household.ampel.bufferYellow"]" Value="_r.BufferYellowMonths" ValueChanged="v => _r = _r with { BufferYellowMonths = v }" />
+                        <NumberField Label="@L["household.ampel.savingsGreen"]" Value="_r.SavingsRateGreenMinPercent" ValueChanged="v => _r = _r with { SavingsRateGreenMinPercent = v }" />
+                        <NumberField Label="@L["household.ampel.savingsYellow"]" Value="_r.SavingsRateYellowMinPercent" ValueChanged="v => _r = _r with { SavingsRateYellowMinPercent = v }" />
+                        <NumberField Label="@L["household.ampel.cashflowGreen"]" Value="_r.CashflowGreenMinPercent" ValueChanged="v => _r = _r with { CashflowGreenMinPercent = v }" />
+                        <NumberField Label="@L["household.ampel.fixedWarn"]" Value="_r.FixedCostWarnPercent" ValueChanged="v => _r = _r with { FixedCostWarnPercent = v }" />
+                        <NumberField Label="@L["household.ampel.emergency"]" Value="_r.EmergencyFundIncomeMultiplier" ValueChanged="v => _r = _r with { EmergencyFundIncomeMultiplier = v }" />
+                    </div>
+                </fieldset>
+                @if (IsOwner)
+                {
+                    <div><button type="submit" class="btn btn-primary" disabled="@_busy"><Icon Name="check" />@L["action.save"]</button></div>
+                }
+                else
+                {
+                    <p class="small muted mb-0"><Icon Name="lock" /> @L["household.ownerOnly"]</p>
+                }
+            </form>
+        </section>
+
+        <section class="card danger-zone" aria-labelledby="hh-danger">
+            <div class="card-head"><h2 id="hh-danger">@L["household.danger"]</h2></div>
+            <div class="stack">
+                <div>
+                    <p class="small">@L["household.leaveText"]</p>
+                    <button class="btn" @onclick="LeaveAsync"><Icon Name="logout" />@L["household.leave"]</button>
+                </div>
+                @if (IsOwner)
+                {
+                    <div>
+                        <p class="small">@L["household.deleteText"]</p>
+                        <button class="btn btn-danger" @onclick="DeleteAsync"><Icon Name="trash" />@L["household.delete"]</button>
+                    </div>
+                }
+            </div>
+        </section>
+    </div>
+</div>
+
+@code {
+    private HouseholdInfoDto? _info;
+    private List<InvitationDto>? _invitations;
+    private AmpelRules _r = AmpelRules.Default;
+    private string _inviteEmail = "";
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _r = Store.Data.Household.AmpelRules ?? AmpelRules.Default;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _info = await Api.GetAsync<HouseholdInfoDto>("api/v1/household");
+            _r = _info.Household.AmpelRules ?? AmpelRules.Default;
+            _invitations = await Api.GetAsync<List<InvitationDto>>("api/v1/household/invitations");
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private static string Initial(string name) => string.IsNullOrWhiteSpace(name) ? "?" : name.Trim()[..1].ToUpperInvariant();
+
+    private async Task InviteAsync()
+    {
+        _busy = true;
+        try
+        {
+            var email = string.IsNullOrWhiteSpace(_inviteEmail) ? null : _inviteEmail.Trim();
+            var inv = await Api.PostAsync<InvitationDto>("api/v1/household/invitations", new CreateInvitationRequest(email));
+            _inviteEmail = "";
+            Toasts.Success(email is null ? L["household.inviteCreated"] : L.T("household.inviteSent", email));
+            if (email is null) await CopyAsync(inv.Link);
+            await LoadAsync();
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+
+    private async Task CopyAsync(string link)
+    {
+        if (await Browser.Call<bool>("copyText", link)) Toasts.Success(L["household.linkCopied"]);
+    }
+
+    private async Task RevokeInviteAsync(InvitationDto inv)
+    {
+        try
+        {
+            await Api.DeleteAsync($"api/v1/household/invitations/{inv.Id}");
+            Toasts.Info(L["household.inviteRevoked"]);
+            await LoadAsync();
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private async Task TransferAsync(Member m)
+    {
+        if (!await Confirm.AskAsync(L["household.transferTitle"], L.T("household.transferText", m.Name), L["household.makeOwner"])) return;
+        try
+        {
+            await Api.PostAsync("api/v1/household/transfer-ownership", new TransferOwnershipRequest(m.UserId));
+            await Session.UpdateUserAsync(await Api.GetAsync<UserDto>("api/v1/me"));
+            Toasts.Success(L.T("household.transferred", m.Name));
+            await LoadAsync();
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private async Task RemoveAsync(Member m)
+    {
+        if (!await Confirm.AskAsync(L["household.removeTitle"], L.T("household.removeText", m.Name), L["household.remove"], danger: true)) return;
+        try
+        {
+            await Api.DeleteAsync($"api/v1/household/members/{m.UserId}");
+            Toasts.Success(L.T("household.removed", m.Name));
+            await LoadAsync();
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private async Task SaveRulesAsync()
+    {
+        _busy = true;
+        try
+        {
+            _info = await Act.UpdateHouseholdAsync(new HouseholdSettingsUpdate(null, null, null, _r));
+            await Sync.SyncNowAsync();
+            Toasts.Success(L["household.ampelSaved"]);
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+
+    private async Task ResetRulesAsync()
+    {
+        try
+        {
+            _info = await Act.UpdateHouseholdAsync(new HouseholdSettingsUpdate(null, null, null, null, ResetAmpelRules: true));
+            _r = AmpelRules.Default;
+            await Sync.SyncNowAsync();
+            Toasts.Success(L["household.ampelSaved"]);
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private async Task LeaveAsync()
+    {
+        if (!await Confirm.AskAsync(L["household.leaveTitle"], L["household.leaveText"], L["household.leave"], danger: true)) return;
+        try
+        {
+            await Api.PostAsync("api/v1/household/leave");
+            await Sync.ReloadMembershipAsync();
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private async Task DeleteAsync()
+    {
+        var name = Store.Data.Household.Name;
+        if (!await Confirm.AskAsync(L["household.deleteTitle"], L.T("household.deleteConfirm", name), L["household.delete"], danger: true, requireInput: name)) return;
+        try
+        {
+            await Api.DeleteAsync("api/v1/household");
+            Toasts.Success(L["household.deleted"]);
+            await Sync.ReloadMembershipAsync();
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+}

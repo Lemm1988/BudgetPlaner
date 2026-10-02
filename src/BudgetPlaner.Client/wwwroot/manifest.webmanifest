@@ -1,0 +1,29 @@
+{
+  "name": "BudgetPlaner – Familienbudget",
+  "short_name": "BudgetPlaner",
+  "description": "Familienbudget ohne Bankanbindung: Budget, Schulden, Cashflow, Polster, Statistik und Prognosen.",
+  "id": "/",
+  "start_url": "/uebersicht",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "lang": "de",
+  "dir": "ltr",
+  "background_color": "#F7F3EA",
+  "theme_color": "#1F5F4A",
+  "categories": [ "finance", "productivity" ],
+  "prefer_related_applications": false,
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "Budget", "url": "/budget", "icons": [ { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" } ] },
+    { "name": "Cashflow", "url": "/cashflow", "icons": [ { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" } ] },
+    { "name": "Schulden", "url": "/schulden", "icons": [ { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" } ] },
+    { "name": "Polster", "url": "/polster", "icons": [ { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" } ] }
+  ]
+}

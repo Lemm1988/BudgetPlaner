@@ -1,0 +1,260 @@
+@inherits AppComponent
+
+@* Schuld anlegen/bearbeiten (F-020) mit Rate als verknüpfter Budgetposition (B-07) und optionaler Zusatztilgung. *@
+<Modal Title="@(_isNew ? L["debt.newTitle"] : L["debt.editTitle"])" OnClose="OnClose" Wide="true">
+    <ChildContent>
+        <form id="debt-form" @onsubmit="SaveAsync" @onsubmit:preventDefault="true" class="stack">
+            <div class="form-grid">
+                <div class="field">
+                    <label for="debt-name">@L["debt.name"] <span aria-hidden="true">*</span></label>
+                    <input id="debt-name" class="input" @bind="_d.Name" @bind:event="oninput" required maxlength="120" placeholder="@L["debt.namePlaceholder"]"
+                           aria-invalid="@(_nameError ? "true" : "false")" />
+                    @if (_nameError) { <span class="error" role="alert">@L["err.name.required"]</span> }
+                </div>
+                <div class="field">
+                    <label for="debt-type">@L["debt.type"]</label>
+                    <select id="debt-type" class="select" value="@_d.Type" @onchange="e => SetType(e.Value?.ToString())">
+                        @foreach (var t in Enum.GetValues<DebtType>())
+                        {
+                            <option value="@t">@L.Of(t)</option>
+                        }
+                    </select>
+                </div>
+                <AmountField Label="@L["debt.openingBalance"]" Value="_balance" ValueChanged="SetBalance" Required="true" Hint="@L["debt.openingHint"]" />
+                <div class="field">
+                    <label for="debt-asof">@L["debt.asOf"]</label>
+                    <input id="debt-asof" class="input" type="date" value="@_d.StartDate.ToString("yyyy-MM-dd")" @onchange="e => SetStartDate(e.Value?.ToString())" />
+                </div>
+                <div class="field">
+                    <label for="debt-interest">@L["debt.interest"] <InfoTip Term="sollzins" /></label>
+                    <div class="input-group">
+                        <input id="debt-interest" class="input amount" inputmode="decimal" value="@(_interest is { } i ? L.Num(i, 2) : "")" placeholder="0"
+                               @onchange="e => SetInterest(e.Value?.ToString())" aria-invalid="@(_interestError ? "true" : "false")" />
+                        <span class="input-addon" aria-hidden="true">%</span>
+                    </div>
+                    @if (_interestError) { <span class="error" role="alert">@L["err.debt.interest"]</span> }
+                </div>
+                <AmountField Label="@L["debt.monthlyRate"]" Value="_rate" ValueChanged="v => _rate = v" Hint="@RateHint" />
+                <div class="field">
+                    <label for="debt-day">@L["debt.debitDay"]</label>
+                    <select id="debt-day" class="select" @bind="DayValue">
+                        <option value="">@L["entry.noDay"]</option>
+                        @for (var d = 1; d <= 31; d++)
+                        {
+                            <option value="@d">@L.T("budget.dayOfMonth", d)</option>
+                        }
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="debt-term">@L["debt.termMonths"]</label>
+                    <div class="row" style="flex-wrap:nowrap">
+                        <input id="debt-term" class="input" type="number" min="1" max="600" inputmode="numeric" value="@_d.TermMonths"
+                               @onchange="e => _d.TermMonths = int.TryParse(e.Value?.ToString(), out var t) && t > 0 ? Math.Min(t, 600) : null" />
+                        <button type="button" class="btn btn-sm" disabled="@(!CanCalcRate)" @onclick="CalcRate" title="@L["debt.calcRate"]">
+                            <Icon Name="calculator" /><span class="sr-only">@L["debt.calcRate"]</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            @if (_rateTooLow is { } interestPerMonth)
+            {
+                <div class="notice warn" role="status"><Icon Name="alert" /><div>@L.T("debt.rateTooLow", L.Money(interestPerMonth))</div></div>
+            }
+
+            <fieldset class="card soft flat stack-sm">
+                <legend>@L["nav.budget"]</legend>
+                <label class="check"><input type="checkbox" @bind="_inBudget" />@L["debt.inBudget"]</label>
+                <p class="small muted mb-0">@L["debt.inBudgetHint"]</p>
+                @if (_inBudget)
+                {
+                    <div class="form-grid mt-1">
+                        <div class="field">
+                            <label for="debt-cat">@L["debt.rateCategory"]</label>
+                            <select id="debt-cat" class="select" @bind="RateCategoryValue">
+                                @foreach (var c in ExpenseCategories)
+                                {
+                                    <option value="@c.Id">@CategoryLabel(c)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label for="debt-from">@L["debt.planFrom"]</label>
+                            <input id="debt-from" class="input" type="month" value="@_from" @onchange="e => { if (Period.TryParse(e.Value?.ToString(), out var p)) _from = p; }" />
+                        </div>
+                        <AmountField Label="@L["debt.extraMonthly"]" Value="_extra" ValueChanged="v => _extra = v" Hint="@L["debt.extraHint"]" />
+                        <div class="field">
+                            <label class="check"><input type="checkbox" @bind="_d.AutoBook" />@L["debt.autoBook"]</label>
+                        </div>
+                    </div>
+                }
+            </fieldset>
+
+            <details open="@_more">
+                <summary class="btn btn-ghost btn-sm">@L["debt.moreOptions"]</summary>
+                <div class="form-grid mt-1">
+                    <div class="field">
+                        <label for="debt-creditor">@L["debt.creditor"]</label>
+                        <input id="debt-creditor" class="input" @bind="_d.Creditor" maxlength="120" placeholder="@L["debt.creditorPlaceholder"]" />
+                    </div>
+                    <AmountField Label="@L["debt.originalAmount"]" Value="_original" ValueChanged="v => { _original = v; _originalTouched = true; }" Hint="@L["debt.originalHint"]" />
+                    @if (_d.Type == DebtType.Mortgage)
+                    {
+                        <div class="field">
+                            <label for="debt-fixed">@L["debt.fixedInterestUntil"] <InfoTip Term="zinsbindung" /></label>
+                            <input id="debt-fixed" class="input" type="date" value="@(_d.FixedInterestUntil?.ToString("yyyy-MM-dd") ?? "")"
+                                   @onchange="e => _d.FixedInterestUntil = DateOnly.TryParse(e.Value?.ToString(), out var x) ? x : null" />
+                        </div>
+                    }
+                    @if (_d.Type is DebtType.Leasing or DebtType.Loan)
+                    {
+                        <AmountField Label="@L["debt.residualValue"]" Value="_d.ResidualValue" ValueChanged="v => _d.ResidualValue = v is > 0 ? v : null" />
+                    }
+                    <div class="field full">
+                        <label for="debt-note">@L["debt.note"]</label>
+                        <textarea id="debt-note" class="textarea" @bind="_d.Note" maxlength="500"></textarea>
+                    </div>
+                </div>
+            </details>
+
+            @if (_error is not null)
+            {
+                <p class="form-error" role="alert">@_error</p>
+            }
+        </form>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn" @onclick="OnClose">@L["action.cancel"]</button>
+        <button type="submit" form="debt-form" class="btn btn-primary" disabled="@_busy"><Icon Name="check" />@L["action.save"]</button>
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter] public DebtEntry? Debt { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<DebtEntry> OnSaved { get; set; }
+
+    private DebtEntry _d = new();
+    private bool _isNew;
+    private decimal? _balance, _original, _rate, _extra, _interest;
+    private bool _inBudget = true, _more, _busy, _nameError, _interestError, _originalTouched;
+    private Guid _rateCategory;
+    private Period _from;
+    private string? _error;
+
+    // Nur beim Öffnen initialisieren: OnParametersSet liefe bei jedem Neu-Rendern der Seite (z. B. Sync) und würde Eingaben verwerfen.
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        _isNew = Debt is null || Store.Find<DebtEntry>(Debt.Id) is null;
+        _d = Debt?.CloneAs<DebtEntry>() ?? new DebtEntry { StartDate = Store.Engine.Today, Type = DebtType.Loan, AutoBook = true };
+        _balance = _isNew && _d.OpeningBalance == 0 ? null : _d.OpeningBalance;
+        _original = _isNew && _d.OriginalAmount == 0 ? null : _d.OriginalAmount;
+        _originalTouched = !_isNew;
+        _interest = _d.InterestRate;
+        _from = Current;
+        var rateEntry = _isNew ? null : Act.LinkedEntry(_d, DebtRole.Rate);
+        var extraEntry = _isNew ? null : Act.LinkedEntry(_d, DebtRole.Extra);
+        _inBudget = _isNew || (rateEntry is not null && (rateEntry.EndPeriod is null || rateEntry.EndPeriod >= Current));
+        _rate = rateEntry is not null ? Act.NominalAmount(rateEntry, Period.Max(Current, rateEntry.StartPeriod)) : _d.MonthlyRate;
+        _rateCategory = rateEntry?.CategoryId ?? Act.DefaultRateCategory(_d.Type);
+        _extra = extraEntry is not null && (extraEntry.EndPeriod is null || extraEntry.EndPeriod >= Current)
+            ? Act.NominalAmount(extraEntry, Period.Max(Current, extraEntry.StartPeriod)) : null;
+        _more = !_isNew && (_d.Creditor is not null || _d.Note is not null);
+    }
+
+    private IEnumerable<Category> ExpenseCategories =>
+        Ix.Categories.Where(c => c.Type == CategoryType.Expense).OrderBy(c => Ix.CategoryById.GetValueOrDefault(c.ParentId ?? c.Id)?.SortIndex ?? 0)
+            .ThenBy(c => c.ParentId is null ? 0 : 1).ThenBy(c => c.SortIndex);
+
+    private string CategoryLabel(Category c) => c.ParentId is { } pid ? $"{L.Cat(pid)} › {L.Cat(c)}" : L.Cat(c);
+
+    private string RateCategoryValue
+    {
+        get => _rateCategory.ToString();
+        set { if (Guid.TryParse(value, out var g)) _rateCategory = g; }
+    }
+
+    private string DayValue
+    {
+        get => _d.DebitDay?.ToString() ?? "";
+        set => _d.DebitDay = int.TryParse(value, out var d) ? d : null;
+    }
+
+    private void SetType(string? value)
+    {
+        if (!Enum.TryParse<DebtType>(value, out var t)) return;
+        // Kategorie folgt der Art, solange sie noch der Vorgabe der alten Art entspricht.
+        if (_rateCategory == Act.DefaultRateCategory(_d.Type)) _rateCategory = Act.DefaultRateCategory(t);
+        _d.Type = t;
+    }
+
+    private void SetBalance(decimal? v)
+    {
+        _balance = v;
+        if (!_originalTouched || _original is null) _original = v;
+    }
+
+    private void SetStartDate(string? value)
+    {
+        if (DateOnly.TryParse(value, out var d)) _d.StartDate = d;
+    }
+
+    private void SetInterest(string? value)
+    {
+        _interestError = false;
+        if (string.IsNullOrWhiteSpace(value)) { _interest = null; return; }
+        if (Fmt.TryParseAmount(value, out var v) && v is >= 0 and <= 100) _interest = v;
+        else _interestError = true;
+    }
+
+    private bool CanCalcRate => _balance is > 0 && _d.TermMonths is > 0;
+
+    private void CalcRate()
+    {
+        if (!CanCalcRate) return;
+        _rate = DebtCalculator.AnnuityPayment(_balance!.Value, _interest ?? 0, _d.TermMonths!.Value);
+        Toasts.Info(L.T("debt.rateCalculated", L.Money(_rate.Value)));
+    }
+
+    private decimal? _rateTooLow => _balance is > 0 && _rate is > 0 && _interest is > 0 && _rate <= MoneyMath.Round2(_balance.Value * _interest.Value / 1200m)
+        ? MoneyMath.Round2(_balance.Value * _interest.Value / 1200m) : null;
+
+    private string? RateHint
+    {
+        get
+        {
+            if (_balance is not > 0 || _rate is not > 0) return null;
+            var months = DebtCalculator.AnnuityMonths(_balance.Value, _interest ?? 0, _rate.Value + (_extra ?? 0));
+            return months is { } m ? L.T("debt.durationAtRate", L.Duration(m, dative: true)) : null;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        _nameError = string.IsNullOrWhiteSpace(_d.Name);
+        if (_nameError || _interestError) return;
+        if (_balance is not { } balance || balance < 0) { _error = L["err.debt.balance"]; return; }
+        _busy = true;
+        try
+        {
+            _d.Name = _d.Name.Trim();
+            _d.Creditor = string.IsNullOrWhiteSpace(_d.Creditor) ? null : _d.Creditor.Trim();
+            _d.Note = string.IsNullOrWhiteSpace(_d.Note) ? null : _d.Note.Trim();
+            _d.OpeningBalance = balance;
+            _d.OriginalAmount = Math.Max(_original ?? balance, 0);
+            _d.InterestRate = _interest is > 0 ? _interest : null;
+            _d.MonthlyRate = _rate is > 0 ? _rate : null;
+            if (_d.Type != DebtType.Mortgage) _d.FixedInterestUntil = null;
+            RatePlan? rate = _inBudget && _rate is > 0 ? new RatePlan(_rate.Value, _d.DebitDay, _rateCategory, _from) : null;
+            RatePlan? extra = _inBudget && _extra is > 0 ? new RatePlan(_extra.Value, _d.DebitDay, Act.ExtraCategory, _from) : null;
+            await Act.SaveDebtAsync(_d, rate, extra);
+            Toasts.Success(_isNew ? L.T("debt.created", _d.Name) : L["debt.saved"]);
+            await OnSaved.InvokeAsync(_d);
+            await OnClose.InvokeAsync();
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+}

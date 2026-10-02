@@ -1,0 +1,114 @@
+@inherits AppComponent
+@inject BrowserJs Browser
+
+@* Persönliche API-Zugänge für die REST-API (F-130). Das Token wird nur einmal angezeigt. *@
+<section class="card" aria-labelledby="pf-api">
+    <div class="card-head">
+        <h2 id="pf-api">@L["profile.apiTokens"]</h2>
+        <a class="btn btn-sm" href="/api/docs" target="_blank" rel="noopener"><Icon Name="code" />@L["profile.apiDocs"]</a>
+    </div>
+    <p class="small muted">@L["profile.apiLead"]</p>
+
+    @if (_created is { } created)
+    {
+        <div class="notice good mb-1" role="status">
+            <Icon Name="key" />
+            <div style="flex:1;min-width:0">
+                <p class="small mb-1">@L["profile.tokenCreated"]</p>
+                <code class="code-block token-value">@created.Token</code>
+                <div class="row mt-1">
+                    <button class="btn btn-sm" @onclick="() => CopyAsync(created.Token)"><Icon Name="copy" />@L["profile.copy"]</button>
+                    <button class="btn btn-sm btn-ghost" @onclick="() => _created = null">@L["action.done"]</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (_tokens is { Count: > 0 })
+    {
+        <ul class="list mb-1">
+            @foreach (var t in _tokens)
+            {
+                var token = t;
+                <li class="list-row">
+                    <Icon Name="key" />
+                    <div class="grow">
+                        <div>@token.Name</div>
+                        <div class="small muted">@L.T("profile.expires", L.Date(DateOnly.FromDateTime(token.ExpiresAt.LocalDateTime))) · @(token.LastUsedAt is { } lu ? L.T("profile.lastUsed", L.Ago(lu)) : L["profile.never"])</div>
+                    </div>
+                    <button class="btn btn-sm" @onclick="() => RevokeAsync(token)">@L["profile.revoke"]</button>
+                </li>
+            }
+        </ul>
+    }
+    else if (_tokens is not null)
+    {
+        <p class="small muted">@L["profile.noTokens"]</p>
+    }
+
+    <form class="form-grid" @onsubmit="CreateAsync" @onsubmit:preventDefault="true">
+        <div class="field">
+            <label for="tok-name">@L["profile.tokenName"]</label>
+            <input id="tok-name" class="input" @bind="_name" maxlength="60" placeholder="@L["profile.tokenNamePlaceholder"]" required />
+        </div>
+        <div class="field">
+            <label for="tok-days">@L["profile.tokenExpiry"]</label>
+            <select id="tok-days" class="select" @bind="_days">
+                @foreach (var d in new[] { 30, 90, 180, 365 })
+                {
+                    <option value="@d">@L.T("profile.days", d)</option>
+                }
+            </select>
+        </div>
+        <div class="field" style="justify-content:flex-end">
+            <button type="submit" class="btn" disabled="@_busy"><Icon Name="plus" />@L["profile.create"]</button>
+        </div>
+    </form>
+</section>
+
+@code {
+    private List<ApiTokenDto>? _tokens;
+    private CreateApiTokenResponse? _created;
+    private string _name = "";
+    private int _days = 90;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try { _tokens = await Api.GetAsync<List<ApiTokenDto>>("api/v1/me/api-tokens"); }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private async Task CreateAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_name)) { Toasts.Error(L["err.token.name"]); return; }
+        _busy = true;
+        try
+        {
+            _created = await Api.PostAsync<CreateApiTokenResponse>("api/v1/me/api-tokens", new CreateApiTokenRequest(_name.Trim(), _days));
+            _name = "";
+            await LoadAsync();
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+
+    private async Task CopyAsync(string text)
+    {
+        if (await Browser.Call<bool>("copyText", text)) Toasts.Success(L["profile.copied"]);
+    }
+
+    private async Task RevokeAsync(ApiTokenDto token)
+    {
+        if (!await Confirm.AskAsync(L["profile.revoke"], token.Name, L["profile.revoke"], danger: true)) return;
+        try
+        {
+            await Api.DeleteAsync($"api/v1/me/api-tokens/{token.Id}");
+            Toasts.Success(L["profile.tokenRevoked"]);
+            await LoadAsync();
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+}

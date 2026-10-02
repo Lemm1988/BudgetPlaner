@@ -1,0 +1,35 @@
+@inherits AppComponent
+
+@* Monatszentrale mit Zielzone (B-02): zeigt, wie nah Unverplant an 0 € liegt (Zero-Based Budgeting). *@
+<div>
+    <div class="row-between small">
+        <span class="row" style="gap:.2rem">@L["zone.title"]<InfoTip Term="zerobased" /></span>
+        <span class="muted">@L["zone.goal"]</span>
+    </div>
+    <div class="zone mt-1" role="meter" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="@((int)Position - 50)" aria-label="@StatusText">
+        <span class="zone-target"></span>
+        <span class="zone-marker" style="left:@(Position.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture))%"></span>
+    </div>
+    <div class="zone-labels"><span>@L["zone.over"]</span><span>@L["zone.target"]</span><span>@L["zone.open"]</span></div>
+    <p class="mt-1 mb-0" style="font-weight:600">@StatusText</p>
+</div>
+
+@code {
+    [Parameter] public decimal Unverplant { get; set; }
+    [Parameter] public decimal Income { get; set; }
+
+    private decimal Position
+    {
+        get
+        {
+            var basis = Math.Max(Income, 1);
+            var ratio = Unverplant / basis;
+            return Math.Clamp(50 + ratio * 250, 3, 97);
+        }
+    }
+
+    private string StatusText =>
+        Unverplant == 0 ? L["zone.perfect"]
+        : Unverplant > 0 ? L.T("zone.leftToAssign", L.Money(Unverplant))
+        : L.T("zone.overAssigned", L.Money(-Unverplant));
+}

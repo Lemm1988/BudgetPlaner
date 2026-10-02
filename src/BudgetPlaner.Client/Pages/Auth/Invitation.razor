@@ -1,0 +1,105 @@
+@page "/einladung/{Token}"
+@layout PublicLayout
+@inject AppSession Session
+@inject ApiClient Api
+@inject DataStore Store
+@inject SyncClient Sync
+@inject NavigationManager Nav
+@inject ToastService Toasts
+@inject Loc L
+
+<PageTitle>@L["invite.title"] · @L["app.name"]</PageTitle>
+
+<div class="auth-card">
+    <div class="card" style="padding:1.5rem">
+        @if (_info is null && _error is null)
+        {
+            <div class="center"><span class="spinner" aria-hidden="true"></span></div>
+        }
+        else if (_info is null || !_info.Valid)
+        {
+            <h1>@L["invite.invalidTitle"]</h1>
+            <p class="muted">@(_error ?? L["err.invite.invalid"])</p>
+            <a class="btn btn-primary" href="/">@L["auth.backHome"]</a>
+        }
+        else
+        {
+            <div class="empty-icon" style="width:56px;height:56px;border-radius:16px;background:var(--primary-soft);color:var(--primary);display:grid;place-items:center;margin-bottom:.75rem"><Icon Name="family" /></div>
+            <h1>@L.T("invite.heading", _info.HouseholdName)</h1>
+            <p>@L.T("invite.text", _info.InviterName, _info.HouseholdName)</p>
+            <p class="small muted">@L.T("invite.validUntil", L.DateTime(_info.ExpiresAt))</p>
+            @if (!Session.IsAuthenticated)
+            {
+                <a class="btn btn-primary btn-block" href="/login?returnUrl=@Uri.EscapeDataString($"/einladung/{Token}")">@L["invite.loginToAccept"]</a>
+            }
+            else if (_info.AlreadyMember)
+            {
+                <div class="notice good"><Icon Name="check-circle" /><p>@L["err.invite.alreadyMember"]</p></div>
+                <a class="btn btn-primary btn-block mt-2" href="/uebersicht">@L["landing.openApp"]</a>
+            }
+            else
+            {
+                @if (_info.CurrentHouseholdHasData || _info.CurrentHouseholdHasOtherMembers)
+                {
+                    <div class="notice warn mb-2">
+                        <Icon Name="warning" />
+                        <div>
+                            <p><strong>@L["invite.leaveWarningTitle"]</strong></p>
+                            <p class="small">@(_info.CurrentHouseholdHasOtherMembers ? L["invite.leaveWarningShared"] : L["invite.leaveWarningData"])</p>
+                        </div>
+                    </div>
+                }
+                <label class="check"><input type="checkbox" @bind="_confirm" />@L["invite.confirmLeave"]</label>
+                @if (_error is not null)
+                {
+                    <p class="form-error" role="alert">@_error</p>
+                }
+                <button class="btn btn-primary btn-block mt-1" disabled="@(!_confirm || _busy)" @onclick="AcceptAsync">
+                    @if (_busy) { <span class="spinner" aria-hidden="true"></span> }
+                    @L["invite.accept"]
+                </button>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private InvitationInfoDto? _info;
+    private string? _error;
+    private bool _confirm;
+    private bool _busy;
+
+    [Parameter] public string Token { get; set; } = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _info = Session.IsAuthenticated
+                ? await Api.GetAsync<InvitationInfoDto>($"api/v1/invitations/{Uri.EscapeDataString(Token)}")
+                : await Api.SendAsync<InvitationInfoDto>(HttpMethod.Get, $"api/v1/invitations/{Uri.EscapeDataString(Token)}", null, auth: false);
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        catch (OfflineException) { _error = L["error.offline"]; }
+    }
+
+    private async Task AcceptAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            await Api.PostAsync($"api/v1/invitations/{Uri.EscapeDataString(Token)}/accept", new AcceptInvitationRequest(true));
+            var me = await Api.GetAsync<UserDto>("api/v1/me");
+            await Session.UpdateUserAsync(me);
+            await Store.ResetAsync();
+            await Sync.RejoinAsync();
+            await Sync.PullAsync();
+            Toasts.Success(L.T("invite.joined", _info!.HouseholdName));
+            Nav.NavigateTo("/uebersicht");
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        catch (OfflineException) { _error = L["error.offline"]; }
+        finally { _busy = false; }
+    }
+}

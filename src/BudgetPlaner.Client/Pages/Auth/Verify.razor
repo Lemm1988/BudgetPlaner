@@ -1,0 +1,52 @@
+@page "/login/verify"
+@layout PublicLayout
+@inject AppStartup Startup
+@inject ApiClient Api
+@inject BrowserJs Browser
+@inject NavigationManager Nav
+@inject Loc L
+
+<PageTitle>@L["auth.title"] · @L["app.name"]</PageTitle>
+
+<div class="auth-card">
+    <div class="card center" style="padding:1.75rem">
+        @if (_error is null)
+        {
+            <span class="spinner" aria-hidden="true"></span>
+            <p class="mt-1" role="status">@L["auth.verifying"]</p>
+        }
+        else
+        {
+            <div class="empty-icon" style="margin:0 auto .75rem;width:56px;height:56px;border-radius:16px;background:var(--bad-soft);color:var(--bad);display:grid;place-items:center"><Icon Name="x" /></div>
+            <h1>@L["auth.linkInvalid"]</h1>
+            <p class="muted" role="alert">@_error</p>
+            <a class="btn btn-primary" href="/login">@L["auth.requestNew"]</a>
+        }
+    </div>
+</div>
+
+@code {
+    private string? _error;
+
+    [SupplyParameterFromQuery] public string? Token { get; set; }
+    [SupplyParameterFromQuery] public string? Email { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Token))
+        {
+            _error = L["err.login.invalid"];
+            return;
+        }
+        try
+        {
+            var device = await Browser.Call<string>("deviceName");
+            var auth = await Api.PostAsync<AuthResponse>("api/v1/auth/verify", new VerifyRequest(Email, null, Token, device), auth: false);
+            await Startup.SignInAsync(auth);
+            // F-001: nach Klick direkt im Dashboard (bzw. an der ursprünglichen Stelle)
+            Nav.NavigateTo(auth.ReturnUrl ?? "/uebersicht", replace: true);
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        catch (OfflineException) { _error = L["error.offline"]; }
+    }
+}

@@ -1,0 +1,63 @@
+@implements IAsyncDisposable
+@inject BrowserJs Browser
+@inject Loc L
+
+@* Barrierearmer Dialog (F-120): Fokusfalle, Esc schließt, Fokus kehrt zurück. *@
+<div class="modal-backdrop" @onclick="BackdropClick">
+    <div class="modal @(Wide ? "wide" : "")" role="dialog" aria-modal="true" aria-labelledby="@_titleId" @ref="_el"
+         @onclick:stopPropagation="true" @onkeydown="OnKey">
+        <div class="modal-head">
+            <h2 id="@_titleId">@Title</h2>
+            <button type="button" class="icon-btn sm" aria-label="@L["action.close"]" @onclick="Close"><Icon Name="x" /></button>
+        </div>
+        @ChildContent
+        @if (Footer is not null)
+        {
+            <div class="modal-foot">@Footer</div>
+        }
+    </div>
+</div>
+
+@code {
+    private readonly string _titleId = "dlg-" + Guid.NewGuid().ToString("N")[..8];
+    private ElementReference _el;
+
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public bool Wide { get; set; }
+    [Parameter] public bool CloseOnBackdrop { get; set; } = true;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await Browser.Run("storeFocus");
+        await Browser.Run("setScrollLock", true);
+        await Browser.Run("trapFocus", _el);
+        await Browser.Run("focusFirst", _el);
+    }
+
+    private async Task Close() => await OnClose.InvokeAsync();
+
+    private async Task BackdropClick()
+    {
+        if (CloseOnBackdrop) await Close();
+    }
+
+    private async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") await Close();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await Browser.Run("releaseFocus", _el);
+            await Browser.Run("setScrollLock", false);
+            await Browser.Run("restoreFocus");
+        }
+        catch (JSDisconnectedException) { }
+    }
+}

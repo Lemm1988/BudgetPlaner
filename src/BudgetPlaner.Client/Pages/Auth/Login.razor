@@ -1,0 +1,188 @@
+@page "/login"
+@layout PublicLayout
+@inject AppSession Session
+@inject AppStartup Startup
+@inject ApiClient Api
+@inject BrowserJs Browser
+@inject NavigationManager Nav
+@inject Loc L
+@implements IDisposable
+
+<PageTitle>@L["auth.title"] · @L["app.name"]</PageTitle>
+
+<div class="auth-card">
+    <div class="card" style="padding:1.5rem">
+        @if (_step == 1)
+        {
+            <h1>@L["auth.title"]</h1>
+            <p class="muted">@L["auth.intro"]</p>
+            <form @onsubmit="RequestAsync" @onsubmit:preventDefault="true" class="stack">
+                <div class="field">
+                    <label for="email">@L["auth.email"]</label>
+                    <input id="email" class="input" type="email" inputmode="email" autocomplete="email" required
+                           @bind="_email" @bind:event="oninput" placeholder="name@beispiel.de" aria-invalid="@(_error is not null ? "true" : "false")" />
+                </div>
+                @if (_error is not null)
+                {
+                    <p class="form-error" role="alert">@_error</p>
+                }
+                <button class="btn btn-primary btn-block" type="submit" disabled="@_busy">
+                    @if (_busy) { <span class="spinner" aria-hidden="true"></span> }
+                    <Icon Name="mail" />@L["auth.sendLink"]
+                </button>
+            </form>
+            @if (_passkeys)
+            {
+                <div class="divider-text">@L["auth.or"]</div>
+                <button class="btn btn-block" @onclick="PasskeyAsync" disabled="@_busy"><Icon Name="fingerprint" />@L["auth.passkey"]</button>
+            }
+            <p class="small muted mt-2">@L["auth.noPassword"]</p>
+        }
+        else
+        {
+            <h1>@L["auth.checkMail"]</h1>
+            <p>@((MarkupString)L.T("auth.sentTo", System.Net.WebUtility.HtmlEncode(_email)))</p>
+            <form @onsubmit="VerifyAsync" @onsubmit:preventDefault="true" class="stack">
+                <div class="field">
+                    <label for="code">@L["auth.code"]</label>
+                    <input id="code" class="input code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="7" pattern="[0-9 ]*"
+                           @bind="_code" @bind:event="oninput" placeholder="123456" aria-invalid="@(_error is not null ? "true" : "false")" />
+                    <span class="hint">@L["auth.codeHint"]</span>
+                </div>
+                @if (_error is not null)
+                {
+                    <p class="form-error" role="alert">@_error</p>
+                }
+                <button class="btn btn-primary btn-block" type="submit" disabled="@(_busy || Digits.Length != 6)">
+                    @if (_busy) { <span class="spinner" aria-hidden="true"></span> }
+                    @L["auth.signIn"]
+                </button>
+            </form>
+            <div class="row-between mt-2">
+                <button class="btn btn-ghost btn-sm" @onclick="() => { _step = 1; _error = null; }"><Icon Name="chevron-left" />@L["auth.otherEmail"]</button>
+                <button class="btn btn-ghost btn-sm" disabled="@(_cooldown > 0 || _busy)" @onclick="RequestAsync">
+                    @(_cooldown > 0 ? L.T("auth.resendIn", _cooldown) : L["auth.resend"])
+                </button>
+            </div>
+            @if (_devMailbox)
+            {
+                <div class="notice info mt-2">
+                    <Icon Name="info" />
+                    <div class="small">@L["auth.devMailbox"] <a href="/dev/postfach" target="_blank" rel="noopener">/dev/postfach</a></div>
+                </div>
+            }
+        }
+    </div>
+    <p class="center small muted mt-2"><a href="/">@L["auth.backHome"]</a> · <a href="/datenschutz">@L["nav.privacy"]</a></p>
+</div>
+
+@code {
+    private int _step = 1;
+    private string _email = "";
+    private string _code = "";
+    private string? _error;
+    private bool _busy;
+    private bool _passkeys;
+    private bool _devMailbox;
+    private int _cooldown;
+    private Timer? _timer;
+
+    [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
+
+    private string Digits => new(_code.Where(char.IsDigit).ToArray());
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Session.IsAuthenticated)
+        {
+            Nav.NavigateTo(SafeReturn ?? "/uebersicht", replace: true);
+            return;
+        }
+        _passkeys = await Browser.Call<bool>("passkeysSupported");
+        try { _devMailbox = (await Api.GetAsync<VersionInfo>("api/v1/version")).DevMailbox; } catch (Exception) { }
+    }
+
+    private string? SafeReturn => ReturnUrl is { } r && r.StartsWith('/') && !r.StartsWith("//") ? r : null;
+
+    private async Task RequestAsync()
+    {
+        _error = null;
+        _busy = true;
+        try
+        {
+            var result = await Api.PostAsync<LoginRequestResult>("api/v1/auth/request", new LoginRequest(_email.Trim(), L.Lang, SafeReturn), auth: false);
+            _step = 2;
+            StartCooldown(result.RetryAfterSeconds);
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+            if (ex.Status == 429 && ex.RetryAfterSeconds is { } s)
+            {
+                _step = 2;
+                StartCooldown(s);
+                _error = null;
+            }
+        }
+        catch (OfflineException)
+        {
+            _error = L["error.offline"];
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task VerifyAsync()
+    {
+        _error = null;
+        _busy = true;
+        try
+        {
+            var device = await Browser.Call<string>("deviceName");
+            var auth = await Api.PostAsync<AuthResponse>("api/v1/auth/verify", new VerifyRequest(_email.Trim(), Digits, null, device), auth: false);
+            await Startup.SignInAsync(auth);
+            Nav.NavigateTo(SafeReturn ?? auth.ReturnUrl ?? "/uebersicht", replace: true);
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        catch (OfflineException) { _error = L["error.offline"]; }
+        finally { _busy = false; }
+    }
+
+    private async Task PasskeyAsync()
+    {
+        _error = null;
+        _busy = true;
+        try
+        {
+            var options = await Api.PostAsync<PasskeyOptions>("api/v1/auth/passkey/options", null, auth: false);
+            var assertion = await Browser.Call<string>("getPasskey", options.OptionsJson);
+            var device = await Browser.Call<string>("deviceName");
+            var auth = await Api.PostAsync<AuthResponse>("api/v1/auth/passkey/login", new PasskeyLogin(options.FlowId, assertion, device), auth: false);
+            await Startup.SignInAsync(auth);
+            Nav.NavigateTo(SafeReturn ?? "/uebersicht", replace: true);
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        catch (OfflineException) { _error = L["error.offline"]; }
+        catch (JSException) { _error = L["auth.passkeyCancelled"]; }
+        finally { _busy = false; }
+    }
+
+    private void StartCooldown(int seconds)
+    {
+        _cooldown = seconds;
+        _timer?.Dispose();
+        _timer = new Timer(_ =>
+        {
+            if (_cooldown > 0) _cooldown--;
+            InvokeAsync(StateHasChanged);
+            if (_cooldown <= 0) _timer?.Dispose();
+        }, null, 1000, 1000);
+    }
+
+    private sealed record PasskeyOptions(string OptionsJson, string FlowId);
+    private sealed record PasskeyLogin(string FlowId, string AssertionJson, string? DeviceName);
+
+    public void Dispose() => _timer?.Dispose();
+}

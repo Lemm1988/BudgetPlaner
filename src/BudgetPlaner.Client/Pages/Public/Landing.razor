@@ -1,0 +1,133 @@
+@page "/"
+@layout PublicLayout
+@inject AppSession Session
+@inject NavigationManager Nav
+@inject Loc L
+@inject BrowserJs Browser
+
+<PageTitle>@L["app.name"] – @L["app.tagline"]</PageTitle>
+
+<section class="hero">
+    <div>
+        <span class="badge primary"><Icon Name="sparkles" />@L["landing.badge"]</span>
+        <h1 class="mt-2">@L["landing.headline"]</h1>
+        <p class="lead">@L["landing.lead"]</p>
+        <div class="row mt-2">
+            <a class="btn btn-primary" href="/login"><Icon Name="arrow-right" />@L["landing.start"]</a>
+            <a class="btn" href="/rechner"><Icon Name="calculator" />@L["landing.tryCalculators"]</a>
+        </div>
+        <ul class="list mt-2 small muted" style="display:flex;flex-wrap:wrap;gap:.25rem 1.25rem">
+            <li class="row"><Icon Name="check" Class="pos" />@L["landing.point.free"]</li>
+            <li class="row"><Icon Name="check" Class="pos" />@L["landing.point.noBank"]</li>
+            <li class="row"><Icon Name="check" Class="pos" />@L["landing.point.noPassword"]</li>
+            <li class="row"><Icon Name="check" Class="pos" />@L["landing.point.offline"]</li>
+        </ul>
+    </div>
+    <div class="card" aria-label="@L["landing.previewLabel"]" style="padding:1.25rem">
+        <div class="row-between">
+            <strong>@L["landing.preview.month"]</strong>
+            <span class="ampel green"><span class="ampel-icon"><Icon Name="check" StrokeWidth="3" /></span>@L["ampel.green"]</span>
+        </div>
+        <div class="grid grid-3 mt-2" style="gap:.75rem">
+            <div class="stat"><span class="stat-label">@L["kpi.income"]</span><span class="stat-value sm pos">@L.MoneyIn(4850, "EUR", 0)</span></div>
+            <div class="stat"><span class="stat-label">@L["kpi.expenses"]</span><span class="stat-value sm">@L.MoneyIn(4210, "EUR", 0)</span></div>
+            <div class="stat"><span class="stat-label">@L["kpi.unassigned"]</span><span class="stat-value sm">@L.MoneyIn(40, "EUR", 0)</span></div>
+        </div>
+        <div class="mt-2">
+            <div class="row-between small"><span>@L["zone.title"]</span><span class="muted">@L["zone.goal"]</span></div>
+            <div class="zone mt-1"><span class="zone-target"></span><span class="zone-marker" style="left:53%"></span></div>
+        </div>
+        <div class="stack mt-2" style="gap:.6rem">
+            <div class="row-between small"><span>@L["landing.preview.buffer"]</span><span class="num">52 %</span></div>
+            <ProgressBar Percent="52" Label="@L["landing.preview.buffer"]" />
+            <div class="row-between small"><span>@L["landing.preview.debt"]</span><span class="num">68 %</span></div>
+            <ProgressBar Percent="68" Variant="good" Label="@L["landing.preview.debt"]" />
+        </div>
+    </div>
+</section>
+
+<section class="mt-3" aria-labelledby="areas">
+    <h2 id="areas">@L["landing.areasTitle"]</h2>
+    <p class="muted">@L["landing.areasLead"]</p>
+    <div class="grid grid-3 mt-2">
+        @foreach (var (icon, key) in Areas)
+        {
+            <div class="card feature">
+                <span class="f-icon"><Icon Name="@icon" /></span>
+                <div><h3>@L[$"landing.area.{key}.title"]</h3><p class="muted mb-0">@L[$"landing.area.{key}.text"]</p></div>
+            </div>
+        }
+    </div>
+</section>
+
+<section class="mt-3" aria-labelledby="how">
+    <h2 id="how">@L["landing.howTitle"]</h2>
+    <div class="grid grid-3 mt-2">
+        @for (var i = 1; i <= 3; i++)
+        {
+            <div class="card">
+                <span class="badge primary">@i</span>
+                <h3 class="mt-1">@L[$"landing.how.{i}.title"]</h3>
+                <p class="muted mb-0">@L[$"landing.how.{i}.text"]</p>
+            </div>
+        }
+    </div>
+</section>
+
+<section class="mt-3 grid grid-2" aria-labelledby="rule">
+    <div class="card">
+        <h2 id="rule">@L["landing.ruleTitle"]</h2>
+        <p class="muted">@L["landing.ruleText"]</p>
+        <div class="stack-sm">
+            <div class="row-between small"><span>@L["group.needs"]</span><strong>50 %</strong></div>
+            <ProgressBar Percent="50" Label="@L["group.needs"]" />
+            <div class="row-between small"><span>@L["group.wants"]</span><strong>30 %</strong></div>
+            <ProgressBar Percent="30" Label="@L["group.wants"]" />
+            <div class="row-between small"><span>@L["group.savings"]</span><strong>20 %</strong></div>
+            <ProgressBar Percent="20" Label="@L["group.savings"]" />
+        </div>
+    </div>
+    <div class="card">
+        <h2>@L["landing.privacyTitle"]</h2>
+        <ul class="stack-sm" style="padding-left:1.1rem">
+            <li>@L["landing.privacy.1"]</li>
+            <li>@L["landing.privacy.2"]</li>
+            <li>@L["landing.privacy.3"]</li>
+            <li>@L["landing.privacy.4"]</li>
+        </ul>
+        <a href="/datenschutz">@L["nav.privacy"]</a>
+    </div>
+</section>
+
+<section class="mt-3" aria-labelledby="faq">
+    <h2 id="faq">@L["landing.faqTitle"]</h2>
+    @for (var i = 1; i <= 8; i++)
+    {
+        <details class="faq">
+            <summary>@L[$"faq.{i}.q"]</summary>
+            <div>@L[$"faq.{i}.a"]</div>
+        </details>
+    }
+</section>
+
+<section class="mt-3 card center" style="padding:2rem 1rem">
+    <h2>@L["landing.ctaTitle"]</h2>
+    <p class="muted">@L["landing.ctaText"]</p>
+    <div class="row" style="justify-content:center">
+        <a class="btn btn-primary" href="/login">@L["landing.start"]</a>
+        <ShareButtons />
+    </div>
+</section>
+
+@code {
+    private static readonly (string Icon, string Key)[] Areas =
+    [
+        ("wallet", "budget"), ("debt", "debts"), ("calendar", "cashflow"), ("piggy", "buffers"), ("overview", "overview"),
+        ("bars", "statistics"), ("forecast", "forecasts"), ("family", "household"), ("install", "pwa"),
+    ];
+
+    protected override void OnInitialized()
+    {
+        if (Session.IsAuthenticated) Nav.NavigateTo("/uebersicht", replace: true);
+    }
+}

@@ -1,0 +1,45 @@
+@page "/rechner/stundenlohn"
+@layout PublicLayout
+@inject Loc L
+@using BudgetPlaner.Domain.Calculators
+
+<PageTitle>@L["calc.wage.title"] · @L["app.name"]</PageTitle>
+
+<CalcShell Title="@L["calc.wage.title"]" Lead="@L["calc.wage.short"]">
+    <Inputs>
+        <AmountField Label="@L["calc.wage.net"]" Value="_net" ValueChanged="v => _net = Math.Max(0, v ?? 0)" />
+        <NumberField Label="@L["calc.wage.hours"]" Value="_hours" Decimals="1" ValueChanged="v => _hours = Math.Clamp(v, 0, 100)" />
+        <AmountField Label="@L["calc.wage.price"]" Value="_price" ValueChanged="v => _price = Math.Max(0, v ?? 0)" />
+    </Inputs>
+    <Results>
+        <div class="stat mb-2">
+            <span class="stat-label">@L["calc.wage.hourly"]</span>
+            <span class="stat-value">@L.Money(R.HourlyWage)</span>
+            <span class="stat-hint">@L.Money(R.MinuteWage, decimals: 2) @L["calc.wage.minute"]</span>
+        </div>
+        <div class="result-grid">
+            <div class="stat"><span class="stat-label">@L["calc.wage.monthlyHours"]</span><span class="stat-value sm">@L.Num(R.MonthlyHours, 1)</span></div>
+        </div>
+        @if (_price > 0 && R.HourlyWage > 0)
+        {
+            var hours = FinanceCalculators.WorkHoursFor(_price, R);
+            var days = _hours > 0 ? hours / (_hours / 5m) : 0;
+            <div class="notice info mt-2">
+                <Icon Name="clock" />
+                <div>
+                    <strong>@L.T("calc.wage.worth", L.T("calc.wage.hoursValue", L.Num(hours, 1)))</strong>
+                    @if (days >= 1)
+                    {
+                        <div class="small">≈ @L.T("calc.wage.daysValue", L.Num(days, 1))</div>
+                    }
+                </div>
+            </div>
+        }
+    </Results>
+</CalcShell>
+
+@code {
+    private decimal _net = 2500, _hours = 40, _price = 999;
+
+    private HourlyWageResult R => FinanceCalculators.HourlyWage(_net, _hours);
+}

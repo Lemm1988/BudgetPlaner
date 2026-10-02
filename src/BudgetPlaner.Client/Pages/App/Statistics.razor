@@ -1,0 +1,462 @@
+@page "/statistik"
+@inherits AppComponent
+@using BudgetPlaner.Client.Components.Charts
+
+<PageTitle>@L["nav.statistics"] · @L["app.name"]</PageTitle>
+
+<KpiBar />
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h1>@L["nav.statistics"]</h1>
+            <p class="lead">@L["stats.lead"]</p>
+        </div>
+    </div>
+
+    @if (!Store.IsLoaded)
+    {
+        <div class="card"><div class="skeleton" style="height:14rem"></div></div>
+    }
+    else if (!HasAnyData)
+    {
+        <div class="card"><EmptyState Icon="bars" Title="@L["nav.statistics"]" Text="@L["stats.noData"]"><a class="btn btn-primary" href="/budget">@L["overview.planBudget"]</a></EmptyState></div>
+    }
+    else
+    {
+        <div class="pill-nav" role="tablist" aria-label="@L["stats.tabs"]">
+            @foreach (var t in Tabs)
+            {
+                <button type="button" role="tab" id="tab-@t" aria-selected="@(Tab == t ? "true" : "false")" aria-controls="panel-@t"
+                        tabindex="@(Tab == t ? 0 : -1)" @onclick="() => SetTab(t)" @onkeydown="e => TabKey(e, t)">@L["stats.tab." + t]</button>
+            }
+        </div>
+
+        @if (Tab is "expenses" or "trend" or "planActual" or "rule")
+        {
+            <div class="row mb-2" style="gap:.75rem">
+                @if (Tab != "rule")
+                {
+                    <div class="segmented" role="group" aria-label="@L["stats.range"]">
+                        @foreach (var m in new[] { 3, 6, 12, 24 })
+                        {
+                            <button type="button" aria-pressed="@(_months == m ? "true" : "false")" @onclick="() => _months = m">@L.T(Ui.IsMobile ? "stats.monthsShort" : "stats.months", m)</button>
+                        }
+                    </div>
+                }
+                @if (Tab != "planActual")
+                {
+                    <label class="switch">
+                        <input type="checkbox" @bind="_smoothed" />
+                        <span class="track" aria-hidden="true"></span>
+                        <span>@L["stats.smoothed"]</span>
+                    </label>
+                    <InfoTip Title="@L["stats.smoothed"]" Text="@L["stats.smoothedHint"]" />
+                }
+                <span class="small muted">@L.Period(From) – @L.Period(Selected)</span>
+            </div>
+        }
+
+        <div role="tabpanel" id="panel-@Tab" aria-labelledby="tab-@Tab">
+            @switch (Tab)
+            {
+                case "expenses":
+                    {
+                        var breakdown = Engine.Statistics.ExpensesByCategory(From, Selected, byRoot: !_sub, smoothed: _smoothed);
+                        <div class="grid grid-2 start">
+                            <section class="card" aria-labelledby="st-cat">
+                                <div class="card-head">
+                                    <h2 id="st-cat">@L["stats.byCategory"]</h2>
+                                    <div class="segmented" role="group" aria-label="@L["stats.byCategory"]">
+                                        <button type="button" aria-pressed="@(!_sub ? "true" : "false")" @onclick="() => { _sub = false; _segment = null; }">@L["stats.byRoot"]</button>
+                                        <button type="button" aria-pressed="@(_sub ? "true" : "false")" @onclick="() => { _sub = true; _segment = null; }">@L["stats.bySub"]</button>
+                                    </div>
+                                </div>
+                                @if (breakdown.Total == 0)
+                                {
+                                    <p class="muted mb-0">@L["stats.noExpenses"]</p>
+                                }
+                                else
+                                {
+                                    <DonutChart Title="@L["stats.byCategory"]" Segments="Segments(breakdown)" Format="v => L.Money(v, decimals: 0)" CenterCaption="@L["kpi.expenses"]"
+                                                Selected="@_segment" OnSelect="k => _segment = k" />
+                                    @if (breakdown.Segments.FirstOrDefault(s => s.CategoryId.ToString() == _segment) is { } seg)
+                                    {
+                                        <h3 class="mt-2">@L.T("stats.linesOf", L.Cat(seg.CategoryId))</h3>
+                                        <ul class="list">
+                                            @foreach (var line in seg.Lines)
+                                            {
+                                                <li class="list-row">
+                                                    <div class="grow"><div class="truncate">@line.Name</div><div class="small muted">@L.Cat(line.CategoryId)</div></div>
+                                                    <span class="num">@L.Money(line.Amount)</span>
+                                                </li>
+                                            }
+                                        </ul>
+                                    }
+                                    else
+                                    {
+                                        <p class="small muted mt-1 mb-0">@L["stats.selectHint"]</p>
+                                    }
+                                }
+                            </section>
+
+                            <section class="card" aria-labelledby="st-top">
+                                <div class="card-head"><h2 id="st-top">@L["stats.topExpenses"]</h2></div>
+                                <p class="small muted">@L["stats.topLead"]</p>
+                                @{
+                                    var top = Engine.Statistics.TopExpenses(From, Selected, 10);
+                                }
+                                @if (top.Count == 0)
+                                {
+                                    <p class="muted mb-0">@L["stats.noExpenses"]</p>
+                                }
+                                else
+                                {
+                                    var max = top.Max(t => t.Amount);
+                                    <ol class="list top-list">
+                                        @foreach (var t in top)
+                                        {
+                                            <li class="list-row">
+                                                <div class="grow">
+                                                    <div class="row-between" style="flex-wrap:nowrap">
+                                                        <span class="truncate">@t.Name</span>
+                                                        <span class="num">@L.Money(t.Amount)</span>
+                                                    </div>
+                                                    <div class="top-bar" aria-hidden="true"><span style="width:@Css(max == 0 ? 0 : t.Amount / max * 100)%"></span></div>
+                                                    <div class="row-between small muted"><span>@L.Cat(t.CategoryId)</span><span>@L.Pct(t.Percent)</span></div>
+                                                </div>
+                                            </li>
+                                        }
+                                    </ol>
+                                }
+                            </section>
+                        </div>
+                        break;
+                    }
+                case "trend":
+                    {
+                        var series = Engine.Statistics.IncomeExpenseSeries(Selected, _months, _smoothed);
+                        var rates = Engine.Statistics.SavingsRate(Selected, _months);
+                        var fixedCost = Engine.Statistics.FixedCostRatio(Selected);
+                        <section class="card mb-2" aria-labelledby="st-trend">
+                            <div class="card-head"><h2 id="st-trend">@L["stats.incomeExpense"]</h2></div>
+                            <LineChart Title="@L["stats.incomeExpense"]" Labels="series.Select(p => L.Period(p.Period, shortName: true)).ToList()"
+                                       TooltipLabels="series.Select(p => L.Period(p.Period)).ToList()"
+                                       Series="@(new List<ChartSeries> { new(L["kpi.income"], series.Select(p => p.Income).ToList(), ChartColors.At(0)), new(L["kpi.expenses"], series.Select(p => p.Expenses).ToList(), ChartColors.At(1)) })"
+                                       Format="v => L.Money(v)" AxisFormat="v => L.MoneyCompact(v)" Height="240" />
+                            <p class="small muted mt-1 mb-0">@L["stats.gapHint"]</p>
+                        </section>
+                        <div class="grid grid-2 start">
+                            <section class="card" aria-labelledby="st-rate">
+                                <div class="card-head">
+                                    <h2 id="st-rate">@L["stats.savingsRate"] <InfoTip Term="sparquote" /></h2>
+                                    @if (Engine.Statistics.RateOf(Selected) is { } nowRate)
+                                    {
+                                        <strong class="stat-value sm">@L.Pct(nowRate)</strong>
+                                    }
+                                </div>
+                                <p class="small muted">@L["stats.savingsLead"]</p>
+                                <LineChart Title="@L["stats.savingsRate"]" Labels="rates.Select(p => L.Period(p.Period, shortName: true)).ToList()"
+                                           TooltipLabels="rates.Select(p => L.Period(p.Period)).ToList()"
+                                           Series="@(new List<ChartSeries> { new(L["stats.savingsRate"], rates.Select(p => p.Rate).ToList(), ChartColors.At(0)), new(L["stats.savingsAvg"], rates.Select(p => p.Average3).ToList(), ChartColors.At(2)) })"
+                                           Format="v => L.Pct(v)" AxisFormat="v => L.Pct(v, 0)" Height="200" />
+                                <p class="small muted mt-1 mb-0">@L["stats.savingsAvgHint"]</p>
+                            </section>
+                            <section class="card" aria-labelledby="st-fixed">
+                                <div class="card-head">
+                                    <h2 id="st-fixed">@L["stats.fixedCostRatio"] <InfoTip Term="fixkostenquote" /></h2>
+                                    <AmpelBadge StatusOverride="@(fixedCost.Warning ? AmpelStatus.Red : AmpelStatus.Green)" Label="@L["stats.fixedCostRatio"]" Text="@L.T("stats.fixedCostExplain", L.Pct(Engine.Rules.FixedCostWarnPercent, 0))" AlignRight="true" />
+                                </div>
+                                <div class="stat">
+                                    <span class="stat-value">@(fixedCost.RatioPercent is { } ratio ? L.Pct(ratio) : "–")</span>
+                                    <span class="stat-hint">@L.T("stats.fixedCostOf", L.Money(fixedCost.FixedExpenses), L.Money(fixedCost.Income))</span>
+                                </div>
+                                <div class="mt-1"><ProgressBar Percent="fixedCost.RatioPercent ?? 0" Label="@L["stats.fixedCostRatio"]" Variant="@(fixedCost.Warning ? "bad" : "good")" /></div>
+                                <p class="small mt-1 mb-0 @(fixedCost.Warning ? "neg" : "muted")">
+                                    @(fixedCost.Warning ? L["stats.fixedCostWarn"] : L.T("stats.fixedCostOk", L.Pct(Engine.Rules.FixedCostWarnPercent, 0)))
+                                </p>
+                            </section>
+                        </div>
+                        break;
+                    }
+                case "rule":
+                    {
+                        var rule = _rule6
+                            ? Engine.Statistics.FiftyThirtyTwenty(Selected.AddMonths(-5), Selected, _smoothed)
+                            : Engine.Statistics.FiftyThirtyTwenty(Selected, Selected, _smoothed);
+                        <section class="card" aria-labelledby="st-rule">
+                            <div class="card-head">
+                                <h2 id="st-rule">@L["stats.fiftyThirtyTwenty"] <InfoTip Term="regel503020" /></h2>
+                                <div class="segmented" role="group" aria-label="@L["stats.range"]">
+                                    <button type="button" aria-pressed="@(!_rule6 ? "true" : "false")" @onclick="() => _rule6 = false">@L["stats.ruleMonth"]</button>
+                                    <button type="button" aria-pressed="@(_rule6 ? "true" : "false")" @onclick="() => _rule6 = true">@L["stats.rule6"]</button>
+                                </div>
+                            </div>
+                            <p class="small muted">@L["stats.ruleLead"]</p>
+                            @if (!rule.HasData)
+                            {
+                                <p class="muted mb-0">@L["stats.noExpenses"]</p>
+                            }
+                            else
+                            {
+                                <BarChart Title="@L["stats.fiftyThirtyTwenty"]" Labels="rule.Groups.Select(g => L.Of(g.Group)).ToList()"
+                                          Series="@(new List<ChartSeries> { new(L["stats.actual"], rule.Groups.Select(g => (decimal?)g.ActualPercent).ToList(), ChartColors.At(0)), new(L["stats.target"], rule.Groups.Select(g => g.TargetPercent).ToList(), "var(--chart-other)") })"
+                                          Format="v => L.Pct(v)" AxisFormat="v => L.Pct(v, 0)" ShowLegend="true" Height="220" />
+                                <div class="table-wrap mt-2">
+                                    <table class="table">
+                                        <thead>
+                                            <tr>
+                                                <th scope="col">@L["col.group"]</th>
+                                                <th scope="col" class="num">@L["chart.amount"]</th>
+                                                <th scope="col" class="num">@L["stats.actual"]</th>
+                                                <th scope="col" class="num">@L["stats.target"]</th>
+                                                <th scope="col" class="num">@L["stats.deviation"]</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var g in rule.Groups)
+                                            {
+                                                <tr>
+                                                    <th scope="row">@L.Of(g.Group)</th>
+                                                    <td class="num">@L.Money(g.Amount)</td>
+                                                    <td class="num">@L.Pct(g.ActualPercent)</td>
+                                                    <td class="num">@(g.TargetPercent is { } tp ? L.Pct(tp, 0) : "–")</td>
+                                                    <td class="num @(g.ShowHint ? "hl" : "")">@(g.DeviationPoints is { } d ? L.Num(d, 1) + " " + L["unit.points"] : "–")</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                        <tfoot>
+                                            <tr class="total"><th scope="row">@L["chart.total"]</th><td class="num">@L.Money(rule.Base)</td><td class="num">@L.Pct(rule.Groups.Sum(g => g.ActualPercent))</td><td></td><td></td></tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                                var hints = rule.Groups.Where(g => g.ShowHint).ToList();
+                                @if (hints.Count > 0)
+                                {
+                                    <div class="notice warn mt-2" role="status">
+                                        <Icon Name="alert" />
+                                        <div>
+                                            @foreach (var h in hints)
+                                            {
+                                                <div>@L.T("stats.ruleHint", L.Of(h.Group), L.Num(h.DeviationPoints ?? 0, 1))</div>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="notice good mt-2"><Icon Name="check-circle" /><div>@L.T("stats.ruleOk", L.Num(Engine.Rules.FiftyThirtyTwentyHintPoints, 0))</div></div>
+                                }
+                                <p class="small muted mt-1 mb-0">@L.T("stats.ruleBase", L.Money(rule.Base))</p>
+                            }
+                        </section>
+                        break;
+                    }
+                case "planActual":
+                    {
+                        var pa = Engine.Statistics.PlanVsActual(From, Selected);
+                        <section class="card" aria-labelledby="st-pa">
+                            <div class="card-head"><h2 id="st-pa">@L["stats.planActual"] <InfoTip Term="sollist" /></h2></div>
+                            <p class="small muted">@L["stats.planActualLead"]</p>
+                            <div class="table-wrap">
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th scope="col">@L["chart.category"]</th>
+                                            <th scope="col" class="num">@L["stats.planned"]</th>
+                                            <th scope="col" class="num">@L["stats.actualCol"]</th>
+                                            <th scope="col" class="num">@L["stats.deviation"]</th>
+                                            <th scope="col" class="num">@L["stats.deviationPct"]</th>
+                                            <th scope="col">@L["stats.status"]</th>
+                                        </tr>
+                                    </thead>
+                                    @foreach (var kind in new[] { EntryKind.Income, EntryKind.Expense, EntryKind.Allocation })
+                                    {
+                                        var rows = pa.Rows.Where(r => r.Kind == kind).ToList();
+                                        if (rows.Count == 0) continue;
+                                        <tbody>
+                                            <tr class="total"><th scope="rowgroup" colspan="6">@L.Of(kind)</th></tr>
+                                            @foreach (var r in rows)
+                                            {
+                                                <tr class="@(r.Level > 0 ? "sub" : "")">
+                                                    <th scope="row" style="font-weight:@(r.Level == 0 ? 700 : 500)">@L.Cat(r.CategoryId)</th>
+                                                    <td class="num">@L.Money(r.Planned)</td>
+                                                    <td class="num">@L.Money(r.Actual)</td>
+                                                    <td class="num @(r.Deviation == 0 ? "" : r.Status == AmpelStatus.Red ? "neg" : "pos")">@L.Money(r.Deviation, plus: true)</td>
+                                                    <td class="num">@(r.DeviationPercent is { } dp ? L.Pct(dp, 1, plus: true) : "–")</td>
+                                                    <td>@StatusBadge(r)</td>
+                                                </tr>
+                                            }
+                                            <tr>
+                                                <th scope="row">@L["stats.totalDeviation"]</th>
+                                                <td></td><td></td>
+                                                <td class="num"><strong>@L.Money(kind switch { EntryKind.Income => pa.IncomeDeviation, EntryKind.Expense => pa.ExpenseDeviation, _ => pa.AllocationDeviation }, plus: true)</strong></td>
+                                                <td></td><td></td>
+                                            </tr>
+                                        </tbody>
+                                    }
+                                </table>
+                            </div>
+                            @if (pa.LinesWithoutActual > 0)
+                            {
+                                <p class="small muted mt-1 mb-0">@L.T("stats.missingActuals", pa.LinesWithoutActual)</p>
+                            }
+                        </section>
+                        break;
+                    }
+                case "year":
+                    {
+                        var year = _year ?? Selected.Year;
+                        var matrix = Engine.Statistics.YearOverview(year, _smoothed);
+                        <section class="card" aria-labelledby="st-year">
+                            <div class="card-head">
+                                <h2 id="st-year">@L["stats.yearOverview"] <InfoTip Term="ueberschuss" /></h2>
+                                <div class="row">
+                                    <label class="switch">
+                                        <input type="checkbox" @bind="_smoothed" />
+                                        <span class="track" aria-hidden="true"></span>
+                                        <span>@L["stats.smoothed"]</span>
+                                    </label>
+                                    <div class="month-switch" role="group" aria-label="@L["stats.year"]">
+                                        <button class="icon-btn" aria-label="@L["stats.prevYearNav"]" @onclick="() => _year = year - 1"><Icon Name="chevron-left" /></button>
+                                        <span class="label" style="min-width:4.5rem" aria-live="polite">@year</span>
+                                        <button class="icon-btn" aria-label="@L["stats.nextYearNav"]" @onclick="() => _year = year + 1"><Icon Name="chevron-right" /></button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="table-wrap year-table">
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th scope="col" class="sticky-col">@L["chart.category"]</th>
+                                            @foreach (var p in matrix.Periods)
+                                            {
+                                                <th scope="col" class="num">@L.Month(p.Month, shortName: true)</th>
+                                            }
+                                            <th scope="col" class="num">@L["stats.yearTotal"]</th>
+                                            @if (matrix.HasPreviousYear)
+                                            {
+                                                <th scope="col" class="num">@L["stats.prevYear"]</th>
+                                                <th scope="col" class="num">@L["stats.yoy"]</th>
+                                            }
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var row in matrix.Rows)
+                                        {
+                                            <tr class="@(row.Level == 0 ? "total" : row.Level == 2 ? "sub" : "")">
+                                                <th scope="row" class="sticky-col" style="padding-left:@(row.Level == 2 ? "1.6rem" : null)">@RowLabel(row)</th>
+                                                @foreach (var v in row.Months)
+                                                {
+                                                    <td class="num">@(v is { } x ? L.Num(x, 0) : "–")</td>
+                                                }
+                                                <td class="num"><strong>@L.Num(row.YearTotal, 0)</strong></td>
+                                                @if (matrix.HasPreviousYear)
+                                                {
+                                                    <td class="num">@(row.PreviousYearTotal is { } pv ? L.Num(pv, 0) : "–")</td>
+                                                    <td class="num @(row.Highlight ? "hl" : "")">@(row.DeviationPercent is { } dv ? L.Pct(dv, 1, plus: true) : "–")</td>
+                                                }
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p class="small muted mt-1 mb-0">
+                                @L.T("stats.amountsIn", L.CurrencySymbol) ·
+                                @(matrix.HasPreviousYear ? L.T("stats.highlightHint", L.Pct(Engine.Rules.YearDeviationHighlightPercent, 0)) : L.T("stats.noPrevYear", year - 1))
+                                @if (matrix.HasPreviousYear && matrix.ComparedMonths.Count < 12)
+                                {
+                                    <span>@L.T("stats.comparedMonths", string.Join(", ", matrix.ComparedMonths.Select(m => L.Month(m, shortName: true))))</span>
+                                }
+                            </p>
+                        </section>
+                        break;
+                    }
+                case "netWorth":
+                    {
+                        var points = Engine.Statistics.NetWorth(Selected, Math.Max(12, _months));
+                        var now = points.LastOrDefault(p => p.NetWorth is not null);
+                        var firstPoint = points.FirstOrDefault(p => p.NetWorth is not null);
+                        <section class="card" aria-labelledby="st-nw">
+                            <div class="card-head"><h2 id="st-nw">@L["stats.netWorth"] <InfoTip Term="vermoegen" /></h2></div>
+                            <p class="small muted">@L["stats.netWorthLead"]</p>
+                            <div class="grid grid-3 mb-2" style="gap:.75rem">
+                                <div class="stat"><span class="stat-label">@L["stats.netWorthNow"]</span><span class="stat-value @(now?.NetWorth < 0 ? "neg" : "")">@(now?.NetWorth is { } nw ? L.Money(nw) : "–")</span></div>
+                                <div class="stat"><span class="stat-label">@L["stats.buffers"]</span><span class="stat-value sm">@(now?.Buffers is { } b ? L.Money(b) : "–")</span></div>
+                                <div class="stat"><span class="stat-label">@L["stats.debts"]</span><span class="stat-value sm">@(now?.Debts is { } d ? L.Money(d) : "–")</span></div>
+                            </div>
+                            @if (firstPoint is not null && now is not null && firstPoint != now)
+                            {
+                                var change = (now.NetWorth ?? 0) - (firstPoint.NetWorth ?? 0);
+                                <p class="small mb-2">@L.T("stats.netWorthChange", Period.MonthsBetween(firstPoint.Period, now.Period)): <strong class="@(change >= 0 ? "pos" : "neg")">@L.Money(change, plus: true)</strong></p>
+                            }
+                            <LineChart Title="@L["stats.netWorth"]" Labels="points.Select(p => L.Period(p.Period, shortName: true)).ToList()"
+                                       TooltipLabels="points.Select(p => L.Period(p.Period)).ToList()"
+                                       Series="@(new List<ChartSeries> { new(L["stats.netWorth"], points.Select(p => p.NetWorth).ToList(), ChartColors.At(0)), new(L["stats.buffers"], points.Select(p => p.Buffers).ToList(), ChartColors.At(2)), new(L["stats.debts"], points.Select(p => p.Debts).ToList(), ChartColors.At(1)) })"
+                                       Format="v => L.Money(v)" AxisFormat="v => L.MoneyCompact(v)" Height="240" />
+                        </section>
+                        break;
+                    }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private static readonly string[] Tabs = ["expenses", "trend", "rule", "planActual", "year", "netWorth"];
+
+    [SupplyParameterFromQuery(Name = "ansicht")] public string? TabQuery { get; set; }
+
+    private string Tab => Tabs.Contains(TabQuery) ? TabQuery! : "expenses";
+    private int _months = 6;
+    private bool _smoothed, _sub, _rule6 = true;
+    private string? _segment;
+    private int? _year;
+
+    private Period From => Selected.AddMonths(-(_months - 1));
+
+    private bool HasAnyData => Ix.Entries.Count > 0;
+
+    private void SetTab(string tab) => Nav.NavigateTo(Nav.GetUriWithQueryParameter("ansicht", tab), replace: true);
+
+    private async Task TabKey(KeyboardEventArgs e, string current)
+    {
+        var i = Array.IndexOf(Tabs, current);
+        var next = e.Key switch
+        {
+            "ArrowRight" => Tabs[(i + 1) % Tabs.Length],
+            "ArrowLeft" => Tabs[(i - 1 + Tabs.Length) % Tabs.Length],
+            "Home" => Tabs[0],
+            "End" => Tabs[^1],
+            _ => null,
+        };
+        if (next is null) return;
+        SetTab(next);
+        await Task.Yield();
+        await Browser.Run("focusSelector", "#tab-" + next);
+    }
+
+    [Inject] private BrowserJs Browser { get; set; } = default!;
+
+    private static string Css(decimal v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+    private string RowLabel(YearRow row) => row.Key == "category" ? L.Cat(row.CategoryId) : L["stats.row." + row.Key];
+
+    /// <summary>Stabile Farbe je Kategorie (Farbe folgt der Kategorie, nicht dem Rang).</summary>
+    private IReadOnlyList<DonutSegment> Segments(CategoryBreakdown b)
+    {
+        var order = Ix.Categories.Where(c => c.Type == CategoryType.Expense && (_sub || c.ParentId is null))
+            .OrderBy(c => Ix.CategoryById.GetValueOrDefault(c.ParentId ?? c.Id)?.SortIndex ?? 0).ThenBy(c => c.ParentId is null ? 0 : 1).ThenBy(c => c.SortIndex)
+            .Select(c => c.Id).ToList();
+        return b.Segments.Select(s => new DonutSegment(s.CategoryId.ToString(), L.Cat(s.CategoryId), s.Amount, ChartColors.At(Math.Max(0, order.IndexOf(s.CategoryId))))).ToList();
+    }
+
+    /// <summary>Bewertung je Zeile: Farbe + Symbol + Text (F-066, F-121).</summary>
+    private RenderFragment StatusBadge(PlanActualRow r)
+    {
+        var (cls, icon, text) = r.Deviation == 0
+            ? ("good", "check", L["stats.onTarget"])
+            : r.Status == AmpelStatus.Red ? ("bad", "alert", L["stats.worse"]) : ("good", "check", L["stats.better"]);
+        return @<span class="badge @cls"><Icon Name="@icon" />@text</span>;
+    }
+}

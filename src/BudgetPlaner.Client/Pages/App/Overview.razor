@@ -1,0 +1,210 @@
+@page "/uebersicht"
+@inherits AppComponent
+@inject AppStartup Startup
+
+<PageTitle>@L["nav.overview"] · @L["app.name"]</PageTitle>
+
+<KpiBar />
+
+@if (!Store.IsLoaded)
+{
+    <div class="grid grid-3">
+        @for (var i = 0; i < 6; i++) { <div class="card"><div class="skeleton" style="height:7rem"></div></div> }
+    </div>
+}
+else if (IsEmpty)
+{
+    <div class="page-narrow">
+        <div class="card">
+            <EmptyState Icon="sparkles" Title="@L["overview.emptyTitle"]" Text="@L["overview.emptyText"]">
+                <div class="row" style="justify-content:center">
+                    <button class="btn btn-primary" @onclick="() => { Ui.ShowOnboarding = true; Ui.Notify(); }"><Icon Name="flag" />@L["overview.startWizard"]</button>
+                    <button class="btn" @onclick="LoadDemo" disabled="@_busy"><Icon Name="layers" />@L["demo.load"]</button>
+                    <a class="btn btn-ghost" href="/budget">@L["overview.startManually"]</a>
+                </div>
+            </EmptyState>
+        </div>
+    </div>
+}
+else
+{
+    <div class="page">
+        <div class="page-head">
+            <div>
+                <h1>@L.T("overview.greeting", Session.User?.Name ?? "")</h1>
+                <p class="lead">@L.T("overview.lead", L.Period(Selected))</p>
+            </div>
+            <div class="page-actions">
+                <a class="btn btn-primary" href="/budget"><Icon Name="wallet" />@L["overview.planBudget"]</a>
+            </div>
+        </div>
+
+        @if (Selected == Current)
+        {
+            <WarningList />
+        }
+
+        <div class="grid grid-2 mt-2">
+            <section class="card" aria-labelledby="central">
+                <div class="card-head">
+                    <h2 id="central">@L["overview.central"] <InfoTip Term="unverplant" /></h2>
+                    <AmpelBadge Item="Ampel.Budget" Label="@L["ampel.budget"]" AlignRight="true" />
+                </div>
+                <div class="grid grid-4" style="gap:.75rem">
+                    <div class="stat"><span class="stat-label">@L["kpi.income"]</span><span class="stat-value sm pos">@L.Money(Month.Income)</span></div>
+                    <div class="stat"><span class="stat-label">@L["kpi.expenses"]</span><span class="stat-value sm">@L.Money(Month.Expenses)</span></div>
+                    <div class="stat"><span class="stat-label">@L["kpi.allocations"] <InfoTip Term="polster" /></span><span class="stat-value sm">@L.Money(Month.Allocations)</span></div>
+                    <div class="stat"><span class="stat-label">@L["kpi.unassigned"]</span><span class="stat-value sm @(Month.Unverplant < 0 ? "neg" : "")">@L.Money(Month.Unverplant)</span></div>
+                </div>
+                <div class="mt-2"><Zielzone Unverplant="Month.Unverplant" Income="Month.Income" /></div>
+                <p class="small muted mt-1 mb-0">@L.T("overview.surplusLine", L.Money(Month.Surplus))</p>
+            </section>
+
+            <section class="card" aria-labelledby="ampel">
+                <div class="card-head"><h2 id="ampel">@L["overview.ampelTitle"] <InfoTip Term="ampel" /></h2></div>
+                <ul class="list">
+                    <li class="list-row"><Icon Name="wallet" /><span class="grow">@L["ampel.budget"]</span><AmpelBadge Item="Ampel.Budget" Label="@L["ampel.budget"]" AlignRight="true" /></li>
+                    <li class="list-row"><Icon Name="calendar" /><span class="grow">@L["ampel.cashflow"]</span><AmpelBadge Item="Ampel.Cashflow" Label="@L["ampel.cashflow"]" AlignRight="true" /></li>
+                    <li class="list-row"><Icon Name="debt" /><span class="grow">@L["ampel.debts"]</span><AmpelBadge Item="Ampel.Debts" Label="@L["ampel.debts"]" AlignRight="true" /></li>
+                    <li class="list-row"><Icon Name="piggy" /><span class="grow">@L["ampel.buffers"]</span><AmpelBadge Item="Ampel.Buffers" Label="@L["ampel.buffers"]" AlignRight="true" /></li>
+                    @foreach (var g in Ampel.Groups)
+                    {
+                        <li class="list-row"><Icon Name="@GroupIcon(g.Key)" /><span class="grow">@L["ampel." + g.Key]</span><AmpelBadge Item="g" Label="@L["ampel." + g.Key]" AlignRight="true" /></li>
+                    }
+                </ul>
+            </section>
+        </div>
+
+        <div class="grid grid-3 mt-2">
+            <a class="card link" href="/schulden">
+                <div class="card-head"><h3><Icon Name="debt" />@L["nav.debts"]</h3><AmpelBadge Item="Ampel.Debts" Compact="true" Label="@L["ampel.debts"]" AlignRight="true" /></div>
+                @if (Ix.Debts.Count == 0)
+                {
+                    <p class="muted mb-0">@L["overview.noDebts"]</p>
+                }
+                else
+                {
+                    <div class="stat"><span class="stat-label">@L["debt.totalBalance"]</span><span class="stat-value">@L.Money(Engine.Debts.TotalBalance)</span></div>
+                    <div class="mt-1"><ProgressBar Percent="Engine.Debts.TotalProgressPercent" Variant="good" Label="@L["debt.progress"]" /></div>
+                    <p class="small muted mt-1 mb-0">@DebtFreeText</p>
+                }
+            </a>
+            <a class="card link" href="/polster">
+                <div class="card-head"><h3><Icon Name="piggy" />@L["nav.buffers"]</h3><AmpelBadge Item="Ampel.Buffers" Compact="true" Label="@L["ampel.buffers"]" AlignRight="true" /></div>
+                @if (Ix.Buffers.Count == 0)
+                {
+                    <p class="muted mb-0">@L["overview.noBuffers"]</p>
+                }
+                else
+                {
+                    <div class="stat"><span class="stat-label">@L["buffer.total"]</span><span class="stat-value">@L.Money(Engine.Buffers.TotalBalance)</span></div>
+                    <div class="stack-sm mt-1">
+                        @foreach (var b in Engine.Buffers.All().Take(3))
+                        {
+                            <div class="row-between small"><span class="truncate">@b.Buffer.Name</span><span class="num">@(b.ProgressPercent is { } p ? L.Pct(p, 0) : L.Money(b.Balance))</span></div>
+                            @if (b.ProgressPercent is { } pp)
+                            {
+                                <ProgressBar Percent="pp" Variant="@(b.GoalReached ? "done" : "")" Label="@b.Buffer.Name" />
+                            }
+                        }
+                    </div>
+                }
+            </a>
+            <a class="card link" href="/cashflow">
+                <div class="card-head"><h3><Icon Name="calendar" />@L["nav.cashflow"]</h3><AmpelBadge Item="Ampel.Cashflow" Compact="true" Label="@L["ampel.cashflow"]" AlignRight="true" /></div>
+                @if (!Cash.HasAnchor)
+                {
+                    <p class="muted">@L["cashflow.noAnchorShort"]</p>
+                }
+                else
+                {
+                    <div class="stat"><span class="stat-label">@L["cashflow.balanceToday"]</span><span class="stat-value @(Engine.Cashflow.BalanceToday < 0 ? "neg" : "")">@L.Money(Engine.Cashflow.BalanceToday)</span></div>
+                    <p class="small muted mt-1">@L.T("cashflow.minBalance", L.Money(Cash.MinBalance), L.DateShort(Cash.MinBalanceDate))</p>
+                }
+                <div class="stack-sm">
+                    @foreach (var item in Upcoming)
+                    {
+                        <div class="row-between small"><span class="truncate">@L.DateShort(item.Date) · @item.Name</span><span class="num @(item.Amount > 0 ? "pos" : "")">@L.Money(item.Amount, true)</span></div>
+                    }
+                </div>
+            </a>
+        </div>
+
+        <div class="grid grid-4 mt-2">
+            <div class="card">
+                <div class="stat">
+                    <span class="stat-label">@L["stats.savingsRate"] <InfoTip Term="sparquote" /></span>
+                    <span class="stat-value">@L.Pct(Engine.Statistics.RateOf(Selected))</span>
+                    <Sparkline Values="SavingsTrend" Label="@L["stats.savingsRate"]" Width="120" />
+                </div>
+            </div>
+            <div class="card">
+                <div class="stat">
+                    <span class="stat-label">@L["stats.fixedCostRatio"] <InfoTip Term="fixkostenquote" /></span>
+                    <span class="stat-value @(Fixed.Warning ? "neg" : "")">@L.Pct(Fixed.RatioPercent)</span>
+                    <span class="stat-hint">@(Fixed.Warning ? L["stats.fixedCostWarn"] : L.T("stats.fixedCostOk", L.Pct(Engine.Rules.FixedCostWarnPercent, 0)))</span>
+                </div>
+            </div>
+            <div class="card">
+                <div class="stat">
+                    <span class="stat-label">@L["stats.netWorth"] <InfoTip Term="vermoegen" /></span>
+                    <span class="stat-value @(NetWorthNow < 0 ? "neg" : "")">@L.Money(NetWorthNow)</span>
+                    <Sparkline Values="NetWorthTrend" Label="@L["stats.netWorth"]" Width="120" />
+                </div>
+            </div>
+            <a class="card link" href="/statistik">
+                <div class="stat">
+                    <span class="stat-label">@L["stats.fiftyThirtyTwenty"] <InfoTip Term="regel503020" /></span>
+                    @foreach (var g in Rule.Groups.Where(g => g.Group != BudgetGroup.None))
+                    {
+                        <div class="row-between small"><span>@L.Of(g.Group)</span><span class="num">@L.Pct(g.ActualPercent, 0) / @L.Pct(g.TargetPercent, 0)</span></div>
+                    }
+                </div>
+            </a>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _busy;
+
+    private MonthTotals Month => Engine.Totals(Selected);
+    private AmpelReport Ampel => Engine.Ampel.Evaluate(Selected);
+    private CashflowResult Cash => Engine.Cashflow.ForPeriod(Selected);
+    private FixedCostResult Fixed => Engine.Statistics.FixedCostRatio(Selected);
+    private FiftyThirtyTwentyResult Rule => Engine.Statistics.FiftyThirtyTwenty(Selected, Selected);
+    private bool IsEmpty => Ix.Entries.Count == 0 && Ix.Debts.Count == 0 && Ix.Buffers.Count == 0;
+    private IReadOnlyList<decimal?> SavingsTrend => Engine.Statistics.SavingsRate(Selected, 6).Select(p => p.Rate).ToList();
+    private IReadOnlyList<NetWorthPoint> NetWorth => Engine.Statistics.NetWorth(Selected, 12);
+    private IReadOnlyList<decimal?> NetWorthTrend => NetWorth.Select(p => p.NetWorth).ToList();
+    private decimal NetWorthNow => NetWorth.LastOrDefault(p => p.NetWorth is not null)?.NetWorth ?? 0;
+
+    private IEnumerable<CashItem> Upcoming =>
+        Engine.Cashflow.Flows(Current).Concat(Engine.Cashflow.Flows(Current.Next))
+            .Where(f => f.Date >= DataStore.Today).OrderBy(f => f.Date).Take(3);
+
+    private string DebtFreeText
+    {
+        get
+        {
+            var c = Engine.Debts.Combined();
+            if (!c.Possible) return L["debt.noForecast"];
+            return c.PayoffPeriod is { } p ? L.T("debt.freeBy", L.Period(p)) : L["debt.allPaid"];
+        }
+    }
+
+    private static string GroupIcon(string key) => key switch { "needs" => "shield", "wants" => "smile", "savings" => "piggy", _ => "chart" };
+
+    private async Task LoadDemo()
+    {
+        _busy = true;
+        try
+        {
+            await Api.PostAsync("api/v1/demo");
+            await Sync.PullAsync();
+            Toasts.Success(L["demo.loaded"]);
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+}

@@ -1,0 +1,128 @@
+@inherits AppComponent
+
+@* Kontostand-Abgleich (I-03): echter Stand am Tagesende als Anker für Cashflow und Prognose. *@
+<Modal Title="@(_isNew ? L["cashflow.checkpointTitle"] : L["cashflow.checkpointEdit"])" OnClose="OnClose">
+    <ChildContent>
+        <form id="cp-form" @onsubmit="SaveAsync" @onsubmit:preventDefault="true" class="stack">
+            <div class="form-grid">
+                <div class="field">
+                    <label for="cp-date">@L["cashflow.checkpointDate"]</label>
+                    <input id="cp-date" class="input" type="date" value="@_c.Date.ToString("yyyy-MM-dd")" max="@Engine.Today.AddYears(1).ToString("yyyy-MM-dd")"
+                           @onchange="e => SetDate(e.Value?.ToString())" />
+                </div>
+                <AmountField Label="@L["cashflow.checkpointAmount"]" Value="_amount" ValueChanged="v => _amount = v" Required="true" AllowNegative="true" Hint="@L["cashflow.checkpointHint"]" />
+            </div>
+            @if (Planned is { } planned)
+            {
+                <div class="notice info">
+                    <Icon Name="info" />
+                    <div class="small">
+                        @L.T("cashflow.computed", L.Money(planned))
+                        @if (_amount is { } a && a != planned)
+                        {
+                            <strong> @L.T("cashflow.difference", L.Money(a - planned, plus: true))</strong>
+                        }
+                    </div>
+                </div>
+            }
+            <div class="field">
+                <label for="cp-note">@L["cashflow.checkpointNote"]</label>
+                <input id="cp-note" class="input" @bind="_c.Note" maxlength="200" />
+            </div>
+            @if (_error is not null)
+            {
+                <p class="form-error" role="alert">@_error</p>
+            }
+        </form>
+    </ChildContent>
+    <Footer>
+        @if (!_isNew)
+        {
+            <button type="button" class="btn btn-ghost left" style="color:var(--bad)" @onclick="DeleteAsync"><Icon Name="trash" />@L["action.delete"]</button>
+        }
+        <button type="button" class="btn" @onclick="OnClose">@L["action.cancel"]</button>
+        <button type="submit" form="cp-form" class="btn btn-primary" disabled="@_busy"><Icon Name="check" />@L["action.save"]</button>
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter] public BalanceCheckpoint? Checkpoint { get; set; }
+    [Parameter] public DateOnly? Date { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private BalanceCheckpoint _c = new();
+    private bool _isNew, _busy;
+    private decimal? _amount;
+    private string? _error;
+
+    // Nur beim Öffnen initialisieren: OnParametersSet liefe bei jedem Neu-Rendern der Seite (z. B. Sync) und würde Eingaben verwerfen.
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        if (Checkpoint is not null) Load(Checkpoint);
+        else
+        {
+            var date = Date ?? Engine.Today;
+            var existing = Ix.Checkpoints.FirstOrDefault(c => c.Date == date);
+            if (existing is not null) Load(existing);
+            else
+            {
+                _c = new BalanceCheckpoint { Date = date };
+                _isNew = true;
+                _amount = null;
+            }
+        }
+    }
+
+    private void Load(BalanceCheckpoint c)
+    {
+        _c = c.CloneAs<BalanceCheckpoint>();
+        _isNew = false;
+        _amount = c.Amount;
+    }
+
+    private void SetDate(string? value)
+    {
+        if (!DateOnly.TryParse(value, out var d)) return;
+        // Pro Tag gibt es höchstens einen Abgleich: vorhandenen übernehmen.
+        var existing = Ix.Checkpoints.FirstOrDefault(c => c.Date == d && c.Id != _c.Id);
+        if (existing is not null && _isNew) Load(existing);
+        else _c.Date = d;
+    }
+
+    /// <summary>Planstand am Tagesende ohne diesen Abgleich – nur sinnvoll, wenn ein früherer Abgleich als Anker existiert.</summary>
+    private decimal? Planned
+    {
+        get
+        {
+            var d = _c.Date;
+            if (!Ix.Checkpoints.Any(c => c.Id != _c.Id && c.Date < d)) return null;
+            var cf = Engine.Cashflow;
+            return cf.BalanceAtEndOfDay(d.AddDays(-1)) + cf.FlowsBetween(d, d);
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (_amount is not { } amount) { _error = L["err.amount.required"]; return; }
+        _busy = true;
+        try
+        {
+            _c.Amount = amount;
+            _c.Note = string.IsNullOrWhiteSpace(_c.Note) ? null : _c.Note.Trim();
+            await Act.SaveCheckpointAsync(_c);
+            Toasts.Success(L["cashflow.checkpointSaved"]);
+            await OnClose.InvokeAsync();
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+
+    private async Task DeleteAsync()
+    {
+        var entity = Store.Find<BalanceCheckpoint>(_c.Id);
+        if (entity is not null) await Act.DeleteCheckpointAsync(entity);
+        await OnClose.InvokeAsync();
+    }
+}

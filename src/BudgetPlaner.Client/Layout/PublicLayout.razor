@@ -1,0 +1,75 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject Loc L
+@inject AppSession Session
+@inject NavigationManager Nav
+@inject BrowserJs Browser
+
+<div class="app">
+    <a class="skip-link" href="#main">@L["nav.skip"]</a>
+    <header class="public-header">
+        <div class="inner">
+            <a class="brand" href="/">
+                <span class="brand-mark"><Icon Name="logo" /></span>
+                <span>@L["app.name"]</span>
+            </a>
+            <div class="header-spacer"></div>
+            <nav class="row desktop-only" aria-label="@L["nav.public"]">
+                <a class="btn btn-ghost" href="/rechner">@L["nav.calculators"]</a>
+                <a class="btn btn-ghost" href="/glossar">@L["nav.glossary"]</a>
+            </nav>
+            <LanguageSwitch />
+            @if (Session.IsAuthenticated)
+            {
+                <a class="btn btn-primary" href="/uebersicht">@L["landing.openApp"]</a>
+            }
+            else
+            {
+                <a class="btn btn-primary" href="/login">@L["landing.login"]</a>
+            }
+        </div>
+    </header>
+    <main id="main" class="public-main" tabindex="-1">
+        @Body
+    </main>
+    <footer class="footer">
+        <div class="inner">
+            <span>© @DateTime.Now.Year @L["app.name"]</span>
+            <a href="/rechner">@L["nav.calculators"]</a>
+            <a href="/glossar">@L["nav.glossary"]</a>
+            <a href="/neuigkeiten">@L["nav.releaseNotes"]</a>
+            <a href="/impressum">@L["nav.imprint"]</a>
+            <a href="/datenschutz">@L["nav.privacy"]</a>
+            <a href="/api/docs" target="_blank" rel="noopener">@L["nav.api"]</a>
+            <span class="spacer"></span>
+            <span class="version">@L.T("app.version", AppInfo.Version)</span>
+        </div>
+    </footer>
+</div>
+<ToastHost />
+<ConfirmHost />
+
+@code {
+    protected override void OnInitialized()
+    {
+        L.Changed += Refresh;
+        Session.Changed += Refresh;
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && Nav.Uri.Contains('#')) await Browser.Run("scrollToTarget");
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) => _ = Browser.Run("scrollToTarget");
+
+    private void Refresh() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        L.Changed -= Refresh;
+        Session.Changed -= Refresh;
+        Nav.LocationChanged -= OnLocationChanged;
+    }
+}

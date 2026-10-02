@@ -1,0 +1,20 @@
+@page "/datenschutz"
+@layout PublicLayout
+@inject Loc L
+
+<PageTitle>@L["legal.privacy.title"] · @L["app.name"]</PageTitle>
+
+<div class="page-narrow legal" style="padding:1.5rem 0 3rem">
+    <h1>@L["legal.privacy.title"]</h1>
+    <p class="lead">@L["legal.privacy.lead"]</p>
+    @foreach (var section in Sections)
+    {
+        <h2>@L[$"legal.privacy.{section}"]</h2>
+        <p>@L[$"legal.privacy.{section}Text"]</p>
+    }
+    <p class="small muted mt-2">@L.T("legal.updated", L.Date(new DateOnly(2026, 10, 2)))</p>
+</div>
+
+@code {
+    private static readonly string[] Sections = ["controller", "data", "purpose", "storage", "sharing", "retention", "rights", "security"];
+}
