@@ -70,6 +70,10 @@ else
                 <NavLink class="nav-link" href="/hilfe"><Icon Name="help" />@L["nav.help"]</NavLink>
                 <NavLink class="nav-link" href="/rechner"><Icon Name="calculator" />@L["nav.calculators"]</NavLink>
                 <NavLink class="nav-link" href="/profil"><Icon Name="user" />@L["nav.profile"]</NavLink>
+                @if (Session.IsAdmin)
+                {
+                    <NavLink class="nav-link" href="/verwaltung"><Icon Name="shield" />@L["nav.admin"]</NavLink>
+                }
             </nav>
             <main id="main" class="main" tabindex="-1">
                 <ErrorBoundary @ref="_boundary">

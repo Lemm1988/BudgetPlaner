@@ -148,3 +148,17 @@ Jede Ampel zeigt zusätzlich **Symbol + Text** (✓ Gut, ! Achtung, ✕ Kritisch
 | MonthSnapshot | `HouseholdId`, `TotalAllocations`, `CarryOver`, `ClosingBalance`, `Lines` |
 | BalanceCheckpoint (neu) | Kontostand-Abgleich |
 | Invitation, LoginToken, RefreshToken, PasskeyCredential, PushSubscription, Notification, NotificationLog, ChangeLog, ApiToken (neu, technisch) | |
+| User | `BlockedAt`, `BlockedReason` (Sperre durch Administrator, V-04) |
+| ServerSetting (neu, technisch) | Laufzeit-Einstellungen des Servers, z. B. Registrierungsmodus und Freigabeliste (V-02) |
+
+## 6. Betrieb und Verwaltung (Erweiterung, 2026-10-03)
+
+Nicht im Lastenheft gefordert; ergänzt für den Betrieb auf einem eigenen Raspberry Pi mit ~10 Nutzern.
+
+| ID | Thema | Entscheidung |
+|----|-------|--------------|
+| V-01 | Wer ist Administrator? | Festgelegt über die Konfiguration `App:AdminEmails` statt über eine Rolle in der Datenbank: kein Henne-Ei-Problem bei der Einrichtung, keine Rechteausweitung über die App möglich. Administratoren lassen sich in der App weder sperren noch löschen (erst aus der Konfiguration entfernen). |
+| V-02 | Registrierung | Wunsch des Auftraggebers: jeder darf sich registrieren → Standard **Offen**. Zusätzlich zur Laufzeit umschaltbar: **Nur Freigegebene** (Adressen oder ganze Domains, Personen mit E-Mail-Einladung, Anmeldung über einen gültigen Einladungslink) und **Geschlossen** (nur Administratoren). Bestehende Konten sind nie betroffen. Empfehlung für eine öffentliche Funnel-Adresse: *Nur Freigegebene*. |
+| V-03 | Reihenfolge der Prüfungen beim Anmelden | Sperre und Registrierungsmodus werden **vor** dem Mail-Rate-Limit geprüft: für abgelehnte Adressen wird keine Mail verschickt (Schutz des SMTP-Postfachs), die Meldung ist eindeutig. In Kauf genommen: Bei eingeschränkter Registrierung ist erkennbar, ob zu einer Adresse ein Konto existiert – für einen kleinen, privaten Nutzerkreis vertretbar. |
+| V-04 | Sperren und Löschen | Sperren beendet sofort alle Sitzungen, API-Zugänge und Push-Abos und meldet offene Geräte über SignalR ab; die Daten bleiben erhalten, Entsperren jederzeit. Löschen verhält sich wie F-111 (Owner-Rolle geht an ein anderes Mitglied, gemeinsame Daten bleiben). Alle Verwaltungsaktionen werden protokolliert. |
+| V-05 | Hosting | Raspberry Pi zu Hause statt IONOS-Webspace (Shared Webspace erlaubt keine dauerhaft laufenden .NET-Prozesse/WebSockets). Öffentliche HTTPS-Adresse über **Tailscale Funnel**: gültiges Zertifikat, keine Portfreigabe, keine eigene Domain. Die App lauscht nur auf 127.0.0.1; systemd-Härtung; Updates mit Datenbanksicherung und automatischem Rollback (`deploy/pi`). |

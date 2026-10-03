@@ -23,7 +23,7 @@ public sealed class ApiClient(HttpClient http, AppSession session)
 {
     public string Language { get; set; } = Texts.German;
 
-    public Task<T> GetAsync<T>(string url) => SendAsync<T>(HttpMethod.Get, url, null);
+    public Task<T> GetAsync<T>(string url, bool auth = true) => SendAsync<T>(HttpMethod.Get, url, null, auth);
     public Task<T> PostAsync<T>(string url, object? body, bool auth = true) => SendAsync<T>(HttpMethod.Post, url, body, auth);
     public Task<T> PutAsync<T>(string url, object? body) => SendAsync<T>(HttpMethod.Put, url, body);
     public Task<T> PatchAsync<T>(string url, object? body) => SendAsync<T>(HttpMethod.Patch, url, body);
@@ -94,7 +94,7 @@ public sealed class ApiClient(HttpClient http, AppSession session)
             if (problem.TryGetProperty("title", out var t) && t.GetString() is { Length: > 0 } title) message = title;
         }
         catch (Exception) { /* kein JSON */ }
-        if (res.StatusCode == HttpStatusCode.Unauthorized && key is "err.auth.sessionRevoked" or "err.auth.required")
+        if (res.StatusCode == HttpStatusCode.Unauthorized && key is "err.auth.sessionRevoked" or "err.auth.required" or "err.account.blocked")
             await session.SignOutAsync(expired: true);
         int? retry = res.Headers.RetryAfter?.Delta is { } d ? (int)d.TotalSeconds : null;
         res.Dispose();

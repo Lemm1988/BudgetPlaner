@@ -16,6 +16,13 @@
         {
             <h1>@L["auth.title"]</h1>
             <p class="muted">@L["auth.intro"]</p>
+            @if (_registration is RegistrationModes.AllowList or RegistrationModes.Closed)
+            {
+                <div class="notice info mb-1" role="status">
+                    <Icon Name="lock" />
+                    <div class="small">@L[_registration == RegistrationModes.Closed ? "auth.registrationClosed" : "auth.registrationAllowList"]</div>
+                </div>
+            }
             <form @onsubmit="RequestAsync" @onsubmit:preventDefault="true" class="stack">
                 <div class="field">
                     <label for="email">@L["auth.email"]</label>
@@ -84,6 +91,7 @@
     private bool _busy;
     private bool _passkeys;
     private bool _devMailbox;
+    private string _registration = RegistrationModes.Open;
     private int _cooldown;
     private Timer? _timer;
 
@@ -99,7 +107,13 @@
             return;
         }
         _passkeys = await Browser.Call<bool>("passkeysSupported");
-        try { _devMailbox = (await Api.GetAsync<VersionInfo>("api/v1/version")).DevMailbox; } catch (Exception) { }
+        try
+        {
+            var info = await Api.GetAsync<VersionInfo>("api/v1/version", auth: false);
+            _devMailbox = info.DevMailbox;
+            _registration = info.RegistrationMode;
+        }
+        catch (Exception) { }
     }
 
     private string? SafeReturn => ReturnUrl is { } r && r.StartsWith('/') && !r.StartsWith("//") ? r : null;

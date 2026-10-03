@@ -1,0 +1,312 @@
+@page "/verwaltung"
+@inherits AppComponent
+
+<PageTitle>@L["nav.admin"] · @L["app.name"]</PageTitle>
+
+<div class="page-narrow">
+    <div class="page-head">
+        <div>
+            <h1>@L["nav.admin"]</h1>
+            <p class="lead">@L["admin.lead"]</p>
+        </div>
+        @if (Session.IsAdmin)
+        {
+            <button class="btn btn-sm" @onclick="LoadAsync" disabled="@_busy"><Icon Name="refresh" />@L["admin.refresh"]</button>
+        }
+    </div>
+
+    @if (!Session.IsAdmin)
+    {
+        <div class="notice warn" role="alert"><Icon Name="lock" /><div>@L["err.forbidden.admin"]</div></div>
+    }
+    else
+    {
+        <div class="stack">
+            <section class="card" aria-labelledby="ad-status">
+                <div class="card-head"><h2 id="ad-status"><Icon Name="monitor" />@L["admin.status"]</h2></div>
+                @if (_overview is not { } o)
+                {
+                    <div class="skeleton" style="height:6rem"></div>
+                }
+                else
+                {
+                    <div class="grid grid-4">
+                        <div class="stat">
+                            <span class="stat-label"><Icon Name="users" />@L["admin.users"]</span>
+                            <span class="stat-value">@o.Users</span>
+                            <span class="stat-hint">@L.T("admin.activeNew", o.ActiveUsers30Days, o.NewUsers30Days)</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label"><Icon Name="family" />@L["admin.households"]</span>
+                            <span class="stat-value">@o.Households</span>
+                            <span class="stat-hint">@L.T("admin.blockedCount", o.BlockedUsers)</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label"><Icon Name="layers" />@L["admin.storage"]</span>
+                            <span class="stat-value sm">@Size(o.DatabaseBytes)</span>
+                            <span class="stat-hint">@L.T("admin.memory", Size(o.MemoryBytes))</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label"><Icon Name="clock" />@L["admin.version"]</span>
+                            <span class="stat-value sm">@o.Version</span>
+                            <span class="stat-hint">@L.T("admin.runningSince", L.DateTime(o.StartedAt))</span>
+                        </div>
+                    </div>
+                    <ul class="list mt-2">
+                        <li class="list-row">
+                            <Icon Name="download" />
+                            <div class="grow">
+                                <div>@L["admin.backups"]</div>
+                                <div class="small muted">
+                                    @(o.LastBackupAt is { } last ? L.T("admin.backupsInfo", o.Backups, L.DateTime(last)) : L["admin.noBackups"])
+                                </div>
+                            </div>
+                            <button class="btn btn-sm" @onclick="BackupAsync" disabled="@_busy"><Icon Name="download" />@L["admin.backupNow"]</button>
+                        </li>
+                        <li class="list-row">
+                            <Icon Name="mail" />
+                            <div class="grow">
+                                <div>@L["admin.smtp"]</div>
+                                <div class="small muted">@L[o.SmtpConfigured ? "admin.smtpOk" : "admin.smtpMissing"]</div>
+                            </div>
+                            @StatusBadge(o.SmtpConfigured)
+                        </li>
+                        <li class="list-row">
+                            <Icon Name="bell" />
+                            <div class="grow">
+                                <div>@L["admin.push"]</div>
+                                <div class="small muted">@L[o.PushConfigured ? "admin.pushOk" : "admin.pushMissing"]</div>
+                            </div>
+                            @StatusBadge(o.PushConfigured)
+                        </li>
+                    </ul>
+                }
+            </section>
+
+            <section class="card" aria-labelledby="ad-reg">
+                <div class="card-head"><h2 id="ad-reg"><Icon Name="key" />@L["admin.registration"]</h2></div>
+                <form class="stack" @onsubmit="SaveRegistrationAsync" @onsubmit:preventDefault="true">
+                    <fieldset>
+                        <legend class="sr-only">@L["admin.registration"]</legend>
+                        <div class="segmented" role="radiogroup">
+                            @foreach (var mode in RegistrationModes.All)
+                            {
+                                var m = mode;
+                                <label><input type="radio" name="ad-mode" checked="@(_mode == m)" @onchange="() => _mode = m" /><span>@L["admin.mode." + m]</span></label>
+                            }
+                        </div>
+                    </fieldset>
+                    <p class="small muted mb-0" aria-live="polite">@L["admin.mode." + _mode + ".hint"]</p>
+                    @if (_mode == RegistrationModes.AllowList)
+                    {
+                        <div class="field">
+                            <label for="ad-allow">@L["admin.allowList"]</label>
+                            <textarea id="ad-allow" class="textarea" rows="5" @bind="_allowList" placeholder="@L["admin.allowListPlaceholder"]"></textarea>
+                            <span class="hint">@L["admin.allowListHint"]</span>
+                        </div>
+                    }
+                    <div><button type="submit" class="btn btn-primary" disabled="@_busy"><Icon Name="check" />@L["action.save"]</button></div>
+                </form>
+            </section>
+
+            <section class="card" aria-labelledby="ad-users">
+                <div class="card-head">
+                    <h2 id="ad-users"><Icon Name="users" />@L["admin.accounts"]</h2>
+                    @if (_users is not null)
+                    {
+                        <span class="badge">@Filtered.Count() / @_users.Count</span>
+                    }
+                </div>
+                <div class="field mb-1">
+                    <label for="ad-search" class="sr-only">@L["admin.search"]</label>
+                    <input id="ad-search" class="input" type="search" @bind="_search" @bind:event="oninput" placeholder="@L["admin.search"]" />
+                </div>
+                @if (_users is null)
+                {
+                    <div class="skeleton" style="height:8rem"></div>
+                }
+                else if (!Filtered.Any())
+                {
+                    <p class="small muted mb-0">@L["admin.noUsers"]</p>
+                }
+                else
+                {
+                    <ul class="list">
+                        @foreach (var user in Filtered)
+                        {
+                            var u = user;
+                            var me = u.Id == Session.User?.Id;
+                            <li class="list-row admin-user" data-email="@u.Email">
+                                <span class="member-avatar" aria-hidden="true">@Initial(u.Name)</span>
+                                <div class="grow">
+                                    <div class="row" style="gap:.35rem">
+                                        <strong class="truncate">@u.Name</strong>
+                                        @if (me) { <span class="muted">(@L["household.you"])</span> }
+                                        @if (u.IsAdmin) { <span class="badge primary"><Icon Name="shield" />@L["admin.badge.admin"]</span> }
+                                        @if (u.BlockedAt is not null) { <span class="badge bad"><Icon Name="lock" />@L["admin.badge.blocked"]</span> }
+                                    </div>
+                                    <div class="small muted truncate">@u.Email</div>
+                                    <div class="small muted">
+                                        @L.T("admin.userHousehold", u.HouseholdName, u.HouseholdMembers) · @L.Of(u.Role) ·
+                                        @L.T("admin.registered", L.Date(DateOnly.FromDateTime(u.CreatedAt.LocalDateTime))) ·
+                                        @(u.LastActiveAt is { } a ? L.T("admin.lastActive", L.Ago(a)) : L["admin.neverActive"]) ·
+                                        @L.T("admin.devices", u.Devices)
+                                    </div>
+                                    @if (u.BlockedAt is { } b)
+                                    {
+                                        <div class="small neg">@L.T("admin.blockedSince", L.DateTime(b))@(u.BlockedReason is { Length: > 0 } r ? $" – {r}" : "")</div>
+                                    }
+                                    @if (_blocking == u.Id)
+                                    {
+                                        <form class="row mt-1" @onsubmit="() => BlockAsync(u)" @onsubmit:preventDefault="true">
+                                            <label for="ad-reason" class="sr-only">@L["admin.blockReason"]</label>
+                                            <input id="ad-reason" class="input" style="flex:1;min-width:12rem" maxlength="200" @bind="_reason" placeholder="@L["admin.blockReason"]" />
+                                            <button type="submit" class="btn btn-sm btn-danger" disabled="@_busy"><Icon Name="lock" />@L["admin.block"]</button>
+                                            <button type="button" class="btn btn-sm btn-ghost" @onclick="() => _blocking = null">@L["action.cancel"]</button>
+                                        </form>
+                                    }
+                                </div>
+                                @if (!me && !u.IsAdmin && _blocking != u.Id)
+                                {
+                                    <div class="row" style="gap:.25rem">
+                                        @if (u.BlockedAt is null)
+                                        {
+                                            <button class="btn btn-sm" @onclick="() => StartBlock(u)" aria-label="@L.T("admin.blockUser", u.Email)"><Icon Name="lock" />@L["admin.block"]</button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm" @onclick="() => UnblockAsync(u)" aria-label="@L.T("admin.unblockUser", u.Email)"><Icon Name="undo" />@L["admin.unblock"]</button>
+                                        }
+                                        <button class="btn btn-sm btn-ghost" @onclick="() => DeleteAsync(u)" aria-label="@L.T("admin.deleteUser", u.Email)"><Icon Name="trash" />@L["admin.delete"]</button>
+                                    </div>
+                                }
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+        </div>
+    }
+</div>
+
+@code {
+    private AdminOverviewDto? _overview;
+    private List<AdminUserDto>? _users;
+    private string _mode = RegistrationModes.Open;
+    private string _allowList = "";
+    private string _search = "";
+    private Guid? _blocking;
+    private string _reason = "";
+    private bool _busy;
+
+    private IEnumerable<AdminUserDto> Filtered =>
+        (_users ?? []).Where(u => string.IsNullOrWhiteSpace(_search)
+            || u.Email.Contains(_search.Trim(), StringComparison.OrdinalIgnoreCase)
+            || u.Name.Contains(_search.Trim(), StringComparison.OrdinalIgnoreCase)
+            || u.HouseholdName.Contains(_search.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Session.IsAdmin) await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _overview = await Api.GetAsync<AdminOverviewDto>("api/v1/admin/overview");
+            var reg = await Api.GetAsync<RegistrationSettingsDto>("api/v1/admin/registration");
+            _mode = reg.Mode;
+            _allowList = string.Join('\n', reg.AllowList);
+            await LoadUsersAsync();
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private async Task LoadUsersAsync() => _users = await Api.GetAsync<List<AdminUserDto>>("api/v1/admin/users?take=1000");
+
+    private async Task SaveRegistrationAsync()
+    {
+        _busy = true;
+        try
+        {
+            var list = _allowList.Split(['\n', '\r', ',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+            var saved = await Api.PutAsync<RegistrationSettingsDto>("api/v1/admin/registration", new RegistrationSettingsDto(_mode, list));
+            _mode = saved.Mode;
+            _allowList = string.Join('\n', saved.AllowList);
+            if (_overview is not null) _overview = _overview with { RegistrationMode = saved.Mode };
+            Toasts.Success(L["admin.registrationSaved"]);
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+
+    private async Task BackupAsync()
+    {
+        _busy = true;
+        try
+        {
+            await Api.PostAsync("api/v1/admin/backup");
+            Toasts.Success(L["admin.backupDone"]);
+            _overview = await Api.GetAsync<AdminOverviewDto>("api/v1/admin/overview");
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+
+    private void StartBlock(AdminUserDto u)
+    {
+        _blocking = u.Id;
+        _reason = "";
+    }
+
+    private async Task BlockAsync(AdminUserDto u)
+    {
+        _busy = true;
+        try
+        {
+            await Api.PostAsync($"api/v1/admin/users/{u.Id}/block", new AdminBlockRequest(string.IsNullOrWhiteSpace(_reason) ? null : _reason.Trim()));
+            _blocking = null;
+            Toasts.Success(L.T("admin.blocked", u.Email));
+            await LoadUsersAsync();
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+
+    private async Task UnblockAsync(AdminUserDto u)
+    {
+        try
+        {
+            await Api.PostAsync($"api/v1/admin/users/{u.Id}/unblock");
+            Toasts.Success(L.T("admin.unblocked", u.Email));
+            await LoadUsersAsync();
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private async Task DeleteAsync(AdminUserDto u)
+    {
+        var text = L.T(u.HouseholdMembers > 1 ? "admin.deleteTextShared" : "admin.deleteText", u.Email, u.HouseholdName);
+        if (!await Confirm.AskAsync(L["admin.deleteTitle"], text, L["admin.delete"], danger: true, requireInput: u.Email)) return;
+        try
+        {
+            await Api.DeleteAsync($"api/v1/admin/users/{u.Id}");
+            Toasts.Success(L.T("admin.deleted", u.Email));
+            await LoadAsync();
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
+    private RenderFragment StatusBadge(bool ok) =>
+        @<span class="badge @(ok ? "good" : "warn")"><Icon Name="@(ok ? "check-circle" : "warning")" />@L[ok ? "admin.ok" : "admin.missing"]</span>;
+
+    private static string Initial(string name) => string.IsNullOrWhiteSpace(name) ? "?" : name.Trim()[..1].ToUpperInvariant();
+
+    private string Size(long bytes) => bytes switch
+    {
+        < 1024 * 1024 => $"{L.Num(bytes / 1024m, 0)} KB",
+        < 1024L * 1024 * 1024 => $"{L.Num(bytes / 1024m / 1024m, 1)} MB",
+        _ => $"{L.Num(bytes / 1024m / 1024m / 1024m, 2)} GB",
+    };
+}

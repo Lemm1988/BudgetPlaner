@@ -24,6 +24,8 @@ public static class DependencyInjection
         services.AddScoped<DemoService>();
         services.AddScoped<ChangeLogService>();
         services.AddScoped<AccountService>();
+        services.AddScoped<RegistrationPolicy>();
+        services.AddScoped<AdminService>();
         services.AddScoped<ExportService>();
         services.AddScoped<ImportService>();
         return services;

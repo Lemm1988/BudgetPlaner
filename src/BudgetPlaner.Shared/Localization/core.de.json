@@ -249,5 +249,10 @@
   "month.compensateReason": "Ausgleich Monatsabschluss",
   "export.allocation": "Zuweisung",
   "export.withdrawal": "Entnahme",
-  "buffer.openingBalance": "Anfangsbestand"
+  "buffer.openingBalance": "Anfangsbestand",
+  "err.registration.closed": "Für diese E-Mail-Adresse kann kein neues Konto angelegt werden – die Registrierung ist eingeschränkt. Nutze deinen Einladungslink oder wende dich an den Betreiber.",
+  "err.account.blocked": "Dieses Konto wurde vom Betreiber gesperrt.",
+  "err.forbidden.admin": "Dieser Bereich ist nur für Administratoren.",
+  "err.admin.self": "Das eigene Konto kannst du hier nicht sperren oder löschen.",
+  "err.admin.otherAdmin": "Administratoren können nicht gesperrt oder gelöscht werden – zuerst aus App:AdminEmails entfernen."
 }

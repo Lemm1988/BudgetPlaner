@@ -69,7 +69,9 @@ public sealed class EmailSender(IOptions<SmtpOptions> smtp, IOptions<AppOptions>
 
         var o = smtp.Value;
         var mime = new MimeMessage();
-        mime.From.Add(new MailboxAddress(o.FromName, o.From));
+        // Ohne eigene Absenderadresse das Postfach selbst verwenden (z. B. IONOS lehnt fremde Absender ab).
+        var from = string.IsNullOrWhiteSpace(o.From) && o.User?.Contains('@') == true ? o.User : o.From;
+        mime.From.Add(new MailboxAddress(o.FromName, from));
         mime.To.Add(MailboxAddress.Parse(message.To));
         mime.Subject = message.Subject;
         mime.Body = new BodyBuilder { HtmlBody = message.Html, TextBody = message.Text }.ToMessageBody();

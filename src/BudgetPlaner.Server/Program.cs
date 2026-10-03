@@ -34,6 +34,7 @@ builder.Services.AddBudgetAuth();
 
 builder.Services.AddSignalR().AddJsonProtocol(o => JsonDefaults.Apply(o.PayloadSerializerOptions));
 builder.Services.AddSingleton<HubGroups>();
+builder.Services.AddSingleton<BackupService>();
 builder.Services.AddSingleton<IRealtimeNotifier, SignalRRealtimeNotifier>();
 builder.Services.ConfigureHttpJsonOptions(o => JsonDefaults.Apply(o.SerializerOptions));
 builder.Services.AddProblemDetails();
@@ -111,6 +112,7 @@ app.MapAccountEndpoints();
 app.MapDataEndpoints();
 app.MapAnalysisEndpoints();
 app.MapMiscEndpoints(app.Environment);
+app.MapAdminEndpoints(app.Environment);
 app.MapHub<SyncHub>("/hubs/sync");
 app.Map("/api/{**rest}", () => Results.Problem(statusCode: 404, title: "Not found")).ExcludeFromDescription();
 app.MapFallbackToFile("index.html");

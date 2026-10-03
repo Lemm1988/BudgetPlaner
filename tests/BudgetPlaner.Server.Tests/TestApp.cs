@@ -28,8 +28,12 @@ public sealed class TestClock : IClock
 }
 
 /// <summary>Test-Host mit eigener SQLite-Datei je Instanz, Dev-Postfach und festen Schlüsseln.</summary>
-public sealed class TestApp : WebApplicationFactory<Program>
+/// <param name="settings">Zusätzliche Einstellungen für diesen Host (überschreiben die Vorgaben).</param>
+public sealed class TestApp(params (string Key, string Value)[] settings) : WebApplicationFactory<Program>
 {
+    /// <summary>Administrator in allen Test-Hosts (App:AdminEmails).</summary>
+    public const string AdminEmail = "admin@example.com";
+
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "budgetplaner-tests", Guid.NewGuid().ToString("N"));
     public TestClock Clock { get; } = new();
 
@@ -45,6 +49,8 @@ public sealed class TestApp : WebApplicationFactory<Program>
         builder.UseSetting("RateLimits:ApiPerMinute", "100000");
         builder.UseSetting("Security:EncryptionKey", Convert.ToBase64String(Enumerable.Range(1, 32).Select(i => (byte)i).ToArray()));
         builder.UseSetting("Security:JwtSigningKey", Convert.ToBase64String(Enumerable.Range(1, 64).Select(i => (byte)(i * 3)).ToArray()));
+        builder.UseSetting("App:AdminEmails", AdminEmail);
+        foreach (var (key, value) in settings) builder.UseSetting(key, value);
         builder.ConfigureTestServices(s =>
         {
             s.RemoveAll<IClock>();

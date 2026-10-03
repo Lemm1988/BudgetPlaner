@@ -77,6 +77,54 @@ public sealed record ChangeLogDto(
 
 public sealed record FeedbackRequest(string Message, int? Rating, string? Page);
 
-public sealed record VersionInfo(string Version, string Environment, bool DevMailbox, bool SmtpConfigured, bool PushConfigured);
+public sealed record VersionInfo(string Version, string Environment, bool DevMailbox, bool SmtpConfigured, bool PushConfigured,
+    string RegistrationMode = RegistrationModes.Open);
+
+// ---------- Verwaltung (Administrator) ----------
+
+/// <summary>Registrierungsmodus: jeder, nur freigegebene Adressen (+ E-Mail-Einladungen) oder niemand (außer Admins).</summary>
+public static class RegistrationModes
+{
+    public const string Open = "open";
+    public const string AllowList = "allowlist";
+    public const string Closed = "closed";
+    public static readonly string[] All = [Open, AllowList, Closed];
+}
+
+public sealed record RegistrationSettingsDto(string Mode, IReadOnlyList<string> AllowList);
+
+public sealed record AdminOverviewDto(
+    int Users,
+    int ActiveUsers30Days,
+    int NewUsers30Days,
+    int BlockedUsers,
+    int Households,
+    string RegistrationMode,
+    string Version,
+    string Environment,
+    DateTimeOffset StartedAt,
+    long MemoryBytes,
+    long DatabaseBytes,
+    int Backups,
+    DateTimeOffset? LastBackupAt,
+    bool SmtpConfigured,
+    bool PushConfigured);
+
+public sealed record AdminUserDto(
+    Guid Id,
+    string Email,
+    string Name,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? LastActiveAt,
+    Guid HouseholdId,
+    string HouseholdName,
+    int HouseholdMembers,
+    Role Role,
+    bool IsAdmin,
+    DateTimeOffset? BlockedAt,
+    string? BlockedReason,
+    int Devices);
+
+public sealed record AdminBlockRequest(string? Reason);
 
 public sealed record DemoStatusDto(bool HasDemoData, int DemoRecords);

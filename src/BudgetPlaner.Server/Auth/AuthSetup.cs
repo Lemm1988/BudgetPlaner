@@ -4,6 +4,7 @@ using BudgetPlaner.Application.Common;
 using BudgetPlaner.Infrastructure.Security;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 
@@ -107,12 +108,13 @@ public sealed class UserContextFilter : IEndpointFilter
         }
         var db = http.RequestServices.GetRequiredService<IAppDbContext>();
         var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
-        if (user is null)
+        if (user is null || user.BlockedAt is not null)
         {
-            if (required) throw AppException.Unauthorized("err.auth.sessionRevoked");
+            if (required) throw AppException.Unauthorized(user is null ? "err.auth.sessionRevoked" : "err.account.blocked");
             return null;
         }
-        var ctx = new UserContext(user, http.User.SessionId());
+        var options = http.RequestServices.GetRequiredService<IOptions<AppOptions>>().Value;
+        var ctx = new UserContext(user, http.User.SessionId()) { IsAdmin = options.IsAdmin(user.Email) };
         holder.Set(ctx);
         return ctx;
     }

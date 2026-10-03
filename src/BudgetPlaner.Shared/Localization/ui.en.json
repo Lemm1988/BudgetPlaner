@@ -344,5 +344,8 @@
   "chart.amount": "Amount",
   "chart.share": "Share",
   "help.infoAbout": "Explanation of “{0}”",
-  "help.moreInGlossary": "More in the glossary"
+  "help.moreInGlossary": "More in the glossary",
+  "nav.admin": "Administration",
+  "auth.registrationAllowList": "New accounts on this server are by invitation only. Already registered? Just sign in.",
+  "auth.registrationClosed": "Registration is closed – sign-in with an existing account only."
 }

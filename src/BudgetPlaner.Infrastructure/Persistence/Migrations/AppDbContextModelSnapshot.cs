@@ -437,6 +437,27 @@ namespace BudgetPlaner.Infrastructure.Persistence.Migrations
                     b.ToTable("PushSubscriptions", (string)null);
                 });
 
+            modelBuilder.Entity("BudgetPlaner.Application.Entities.ServerSetting", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("UpdatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Key");
+
+                    b.ToTable("ServerSettings");
+                });
+
             modelBuilder.Entity("BudgetPlaner.Application.Entities.Session", b =>
                 {
                     b.Property<Guid>("Id")
@@ -484,6 +505,12 @@ namespace BudgetPlaner.Infrastructure.Persistence.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("BlockedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("BlockedReason")
                         .HasColumnType("TEXT");
 
                     b.Property<long>("CreatedAt")

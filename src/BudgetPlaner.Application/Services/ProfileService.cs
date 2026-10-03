@@ -41,7 +41,7 @@ public sealed class ProfileService(
         // F-100: Namensänderung sofort für alle Mitglieder sichtbar.
         if (nameChanged) await sync.BumpAsync(user.HouseholdId, ct);
         await realtime.ProfileChangedAsync(user.Id);
-        return AuthService.ToDto(user);
+        return AuthService.ToDto(user, options.Value.IsAdmin(user.Email));
     }
 
     public async Task RequestEmailChangeAsync(UserContext ctx, string newEmail, CancellationToken ct = default)
@@ -72,7 +72,7 @@ public sealed class ProfileService(
         user.PendingEmailExpiresAt = null;
         await db.SaveChangesAsync(ct);
         await sync.BumpAsync(user.HouseholdId, ct);
-        return AuthService.ToDto(user);
+        return AuthService.ToDto(user, options.Value.IsAdmin(user.Email));
     }
 
     // ---------------------------------------------------------------- Benachrichtigungen

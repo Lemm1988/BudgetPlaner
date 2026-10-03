@@ -24,10 +24,23 @@ public sealed class User
     public DateTimeOffset JoinedAt { get; set; }
     public DateTimeOffset? LastLoginAt { get; set; }
 
+    /// <summary>Vom Administrator gesperrt: keine Anmeldung, bestehende Sitzungen ungültig.</summary>
+    public DateTimeOffset? BlockedAt { get; set; }
+    public string? BlockedReason { get; set; }
+
     // E-Mail-Änderung mit Bestätigungscode
     public string? PendingEmail { get; set; }
     public string? PendingEmailCodeHash { get; set; }
     public DateTimeOffset? PendingEmailExpiresAt { get; set; }
+}
+
+/// <summary>Serverweite Einstellung, die der Administrator zur Laufzeit ändert (z. B. Registrierungsmodus).</summary>
+public sealed class ServerSetting
+{
+    public string Key { get; set; } = "";
+    public string Value { get; set; } = "";
+    public DateTimeOffset UpdatedAt { get; set; }
+    public Guid? UpdatedBy { get; set; }
 }
 
 /// <summary>Einmaliger Magic-Link + Code (F-001): 15 Minuten gültig, nur einmal einlösbar.</summary>

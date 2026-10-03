@@ -80,6 +80,13 @@ Testsuiten: **D** = `tests/BudgetPlaner.Domain.Tests` (82) · **S** = `tests/Bud
 | B-17 | Verschlüsselte Speicherung | AES-GCM-Spaltenverschlüsselung |
 | B-18–B-22 | Statusleiste, Version im Footer + `/neuigkeiten`, mobile Einzeilen-Positionen, Sync-Fehlerhinweise, Feedback (`/hilfe`) | E: Mobile/axe |
 
+## Erweiterungen über das Lastenheft hinaus (V-01 – V-05)
+
+| ID | Umsetzung | Nachweis |
+|----|-----------|----------|
+| V-01–V-04 | Verwaltung `/verwaltung` (nur `App:AdminEmails`): Status, Registrierung offen/nur Freigegebene/geschlossen, Sperren/Entsperren/Löschen, Sicherung | S: „Verwaltung: nur für Administratoren …“, „… Registrierung offen / nur Freigegebene …“, „… Sperren beendet Sitzungen …“ · E: „Verwaltung: …“ (inkl. axe, 320 px) |
+| V-05 | Betrieb auf dem Raspberry Pi hinter Tailscale Funnel (`deploy/pi`) | Cross-Build `linux-arm64` (ELF AArch64, SQLite nativ, `wwwroot`) · Anleitung `deploy/pi/README.md` |
+
 ## Nicht-funktionale Anforderungen
 
 | Bereich | Anforderung | Nachweis | Status |

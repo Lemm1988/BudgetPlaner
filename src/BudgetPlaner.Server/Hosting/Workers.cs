@@ -92,7 +92,7 @@ public sealed class NotificationWorker(NotificationTrigger trigger, IServiceScop
 /// Aufräumen und tägliche SQLite-Backups mit 14 Tagen Aufbewahrung (NFR Verfügbarkeit).
 /// </summary>
 public sealed class MaintenanceWorker(IServiceScopeFactory scopes, NotificationTrigger trigger, IOptions<AppOptions> options,
-    IConfiguration config, IHostEnvironment env, ILogger<MaintenanceWorker> logger) : BackgroundService
+    BackupService backups, ILogger<MaintenanceWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
@@ -182,21 +182,5 @@ public sealed class MaintenanceWorker(IServiceScopeFactory scopes, NotificationT
             await db.Households.Where(h => h.Id == hid).ExecuteUpdateAsync(s => s.SetProperty(h => h.PurgedSeq, h => h.ChangeSeq), ct);
     }
 
-    private async Task BackupAsync(CancellationToken ct)
-    {
-        if (config.GetConnectionString("Default") is { } cs && !cs.Contains(".db", StringComparison.OrdinalIgnoreCase)) return;
-        var dir = Path.Combine(Path.GetFullPath(o().DataDirectory, env.ContentRootPath), "backups");
-        Directory.CreateDirectory(dir);
-        var file = Path.Combine(dir, $"budgetplaner-{DateTime.UtcNow:yyyyMMdd-HHmm}.db");
-        using (var scope = scopes.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
-            await db.Database.ExecuteSqlAsync($"VACUUM INTO {file}", ct);
-        }
-        foreach (var old in Directory.GetFiles(dir, "budgetplaner-*.db").Where(f => File.GetCreationTimeUtc(f) < DateTime.UtcNow.AddDays(-o().BackupRetentionDays)))
-            File.Delete(old);
-        logger.LogInformation("Backup erstellt: {File}", file);
-
-        AppOptions o() => options.Value;
-    }
+    private Task BackupAsync(CancellationToken ct) => backups.CreateAsync(ct);
 }

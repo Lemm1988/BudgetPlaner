@@ -27,6 +27,16 @@ public sealed class AppException(int statusCode, string errorKey, params object?
 /// <summary>Konfiguration (appsettings „App“).</summary>
 public sealed class AppOptions
 {
+    /// <summary>
+    /// E-Mail-Adressen der Administratoren (durch Komma oder Semikolon getrennt). Administratoren sehen den
+    /// Verwaltungsbereich (/admin): Konten, Sperren, Registrierungsmodus, Serverstatus.
+    /// </summary>
+    public string AdminEmails { get; set; } = "";
+
+    public bool IsAdmin(string? email) =>
+        !string.IsNullOrWhiteSpace(email) && AdminEmails.Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(a => string.Equals(a, email.Trim(), StringComparison.OrdinalIgnoreCase));
+
     /// <summary>Öffentliche Basis-URL für Links in E-Mails (Magic Link, Einladung).</summary>
     public string PublicBaseUrl { get; set; } = "https://localhost:7264";
 
@@ -65,6 +75,15 @@ public sealed class UserContext(User user, Guid? sessionId)
     public Role Role => User.Role;
     public bool IsOwner => User.Role == Role.Owner;
     public Guid? SessionId { get; } = sessionId;
+
+    /// <summary>Serveradministrator (App:AdminEmails) – unabhängig von der Haushaltsrolle.</summary>
+    public bool IsAdmin { get; init; }
+
+    public void RequireAdmin()
+    {
+        if (!IsAdmin) throw AppException.Forbidden("err.forbidden.admin");
+    }
+
     public string Language => User.Language;
 
     public void RequireOwner()

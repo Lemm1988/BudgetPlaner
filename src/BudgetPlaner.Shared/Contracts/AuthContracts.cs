@@ -30,7 +30,8 @@ public sealed record UserDto(
     string TimeZone,
     string Theme,
     Guid HouseholdId,
-    Role Role);
+    Role Role,
+    bool IsAdmin = false);
 
 /// <summary>Passkey-Anmeldung (B-15): Optionen anfordern, Assertion einreichen.</summary>
 public sealed record PasskeyLoginRequest(string AssertionJson, string? DeviceName);

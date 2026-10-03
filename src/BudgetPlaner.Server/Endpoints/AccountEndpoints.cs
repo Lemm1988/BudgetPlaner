@@ -45,6 +45,7 @@ public static class AccountEndpoints
         {
             var user = await p.LoginAsync(body.FlowId, body.AssertionJson, ct);
             var tracked = await db.Users.FirstAsync(u => u.Id == user.Id, ct);
+            if (tracked.BlockedAt is not null) throw AppException.Forbidden("err.account.blocked");
             tracked.LastLoginAt = DateTimeOffset.UtcNow;
             var response = s.CreateSession(tracked, body.DeviceName, false, null);
             await db.SaveChangesAsync(ct);
@@ -53,7 +54,7 @@ public static class AccountEndpoints
 
         // ---------------- Profil (F-100) ----------------
         var me = app.MapGroup("/api/v1/me").WithTags("Profil").Authed();
-        me.MapGet("/", (RequestUser u) => Results.Ok(AuthService.ToDto(u.Context.User))).WithSummary("Eigenes Profil.");
+        me.MapGet("/", (RequestUser u) => Results.Ok(AuthService.ToDto(u.Context.User, u.Context.IsAdmin))).WithSummary("Eigenes Profil.");
         me.MapPatch("/", async (ProfileUpdate body, RequestUser u, ProfileService s, CancellationToken ct) => Results.Ok(await s.UpdateAsync(u.Context, body, ct)))
             .WithSummary("Name, Sprache, Zeitzone, Design ändern (Namensänderung sofort für alle Mitglieder sichtbar).");
         me.MapPost("/email", async (EmailChangeRequest body, RequestUser u, ProfileService s, CancellationToken ct) =>

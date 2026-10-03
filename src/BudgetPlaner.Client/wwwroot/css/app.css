@@ -422,6 +422,9 @@ legend { font-weight: 600; font-size: .92rem; margin-bottom: .3rem; padding: 0; 
 .list-row { display: flex; align-items: center; gap: .65rem; padding: .65rem .25rem; border-top: 1px solid var(--border); min-height: 52px; }
 .list-row:first-child { border-top: 0; }
 .list-row .grow { flex: 1; min-width: 0; }
+/* Verwaltung: Aktionen rutschen auf schmalen Bildschirmen unter die Kontodaten. */
+.list-row.admin-user { flex-wrap: wrap; align-items: flex-start; }
+.list-row.admin-user .grow { flex: 1 1 15rem; }
 .add-row { display: flex; align-items: center; gap: .5rem; width: 100%; padding: .55rem .9rem; min-height: 46px; border: 0; border-top: 1px dashed var(--border); background: transparent; color: var(--primary); font-weight: 600; cursor: pointer; text-align: left; }
 .add-row:hover { background: var(--primary-soft); }
 .add-row svg { width: 18px; height: 18px; }

@@ -11,7 +11,8 @@ using Microsoft.Extensions.Options;
 namespace BudgetPlaner.Application.Services;
 
 /// <summary>Passwortlose Anmeldung (F-001): Magic Link + Code, JWT + rotierende Refresh-Tokens.</summary>
-public sealed class AuthService(IAppDbContext db, IClock clock, IEmailQueue mail, ITokenService tokens, IOptions<AppOptions> options, IPublicUrlProvider urls)
+public sealed class AuthService(IAppDbContext db, IClock clock, IEmailQueue mail, ITokenService tokens, IOptions<AppOptions> options, IPublicUrlProvider urls,
+    RegistrationPolicy registration)
 {
     private const int MaxCodeAttempts = 5;
     private AppOptions Opt => options.Value;
@@ -21,6 +22,11 @@ public sealed class AuthService(IAppDbContext db, IClock clock, IEmailQueue mail
         var email = TokenHelper.NormalizeEmail(request.Email);
         if (!TokenHelper.IsValidEmail(email)) throw AppException.BadRequest("err.email.invalid");
         var now = clock.UtcNow;
+
+        // Sperre und Registrierungsmodus vor dem Rate-Limit prüfen: es wird keine Mail verschickt, die Meldung ist eindeutig.
+        var existingUser = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Email == email, ct);
+        if (existingUser?.BlockedAt is not null) throw AppException.Forbidden("err.account.blocked");
+        if (existingUser is null && !await registration.CanRegisterAsync(email, request.ReturnUrl, ct)) throw AppException.Forbidden("err.registration.closed");
 
         // Rate-Limit: höchstens eine Anforderung je 60 Sekunden und Adresse.
         var last = await db.LoginTokens.Where(t => t.Email == email).OrderByDescending(t => t.CreatedAt).FirstOrDefaultAsync(ct);
@@ -34,7 +40,6 @@ public sealed class AuthService(IAppDbContext db, IClock clock, IEmailQueue mail
         foreach (var old in await db.LoginTokens.Where(t => t.Email == email && t.UsedAt == null).ToListAsync(ct))
             old.UsedAt = now;
 
-        var existingUser = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Email == email, ct);
         var lang = existingUser?.Language ?? Texts.Normalize(request.Language);
         var token = TokenHelper.RandomToken();
         var code = TokenHelper.Code6();
@@ -82,6 +87,10 @@ public sealed class AuthService(IAppDbContext db, IClock clock, IEmailQueue mail
                 throw AppException.Unauthorized(login.FailedAttempts >= MaxCodeAttempts ? "err.login.tooManyAttempts" : "err.login.invalid");
             }
         }
+
+        var known = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Email == login.Email, ct);
+        if (known?.BlockedAt is not null) throw AppException.Forbidden("err.account.blocked");
+        if (known is null && !await registration.CanRegisterAsync(login.Email, login.ReturnUrl, ct)) throw AppException.Forbidden("err.registration.closed");
 
         login.UsedAt = now;
         var (user, isNew) = await GetOrCreateUserAsync(login.Email, login.Language, ct);
@@ -146,7 +155,7 @@ public sealed class AuthService(IAppDbContext db, IClock clock, IEmailQueue mail
         };
         db.Sessions.Add(session);
         var (access, expires) = tokens.CreateAccessToken(user, session.Id);
-        return new AuthResponse(access, expires, refresh, session.ExpiresAt, ToDto(user), isNew, returnUrl);
+        return new AuthResponse(access, expires, refresh, session.ExpiresAt, ToDto(user, Opt.IsAdmin(user.Email)), isNew, returnUrl);
     }
 
     /// <summary>Refresh-Token rotieren; Wiederverwendung eines alten Tokens nach Ablauf der Schonfrist beendet die Sitzung.</summary>
@@ -172,6 +181,7 @@ public sealed class AuthService(IAppDbContext db, IClock clock, IEmailQueue mail
         }
         if (session.RevokedAt is not null || session.ExpiresAt < now) throw AppException.Unauthorized("err.auth.sessionRevoked");
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == session.UserId, ct) ?? throw AppException.Unauthorized("err.auth.sessionRevoked");
+        if (user.BlockedAt is not null) throw AppException.Unauthorized("err.account.blocked");
 
         var refresh = TokenHelper.RandomToken(48);
         session.PreviousTokenHash = session.RefreshTokenHash == hash ? hash : session.RefreshTokenHash;
@@ -179,7 +189,7 @@ public sealed class AuthService(IAppDbContext db, IClock clock, IEmailQueue mail
         session.LastUsedAt = now;
         await db.SaveChangesAsync(ct);
         var (access, expires) = tokens.CreateAccessToken(user, session.Id);
-        return new AuthResponse(access, expires, refresh, session.ExpiresAt, ToDto(user), false, null);
+        return new AuthResponse(access, expires, refresh, session.ExpiresAt, ToDto(user, Opt.IsAdmin(user.Email)), false, null);
     }
 
     public async Task LogoutAsync(Guid? sessionId, CancellationToken ct = default)
@@ -191,7 +201,7 @@ public sealed class AuthService(IAppDbContext db, IClock clock, IEmailQueue mail
         await db.SaveChangesAsync(ct);
     }
 
-    public static UserDto ToDto(User u) => new(u.Id, u.Email, u.Name, u.Language, u.TimeZone, u.Theme, u.HouseholdId, u.Role);
+    public static UserDto ToDto(User u, bool isAdmin = false) => new(u.Id, u.Email, u.Name, u.Language, u.TimeZone, u.Theme, u.HouseholdId, u.Role, isAdmin);
 }
 
 /// <summary>Standard-Benachrichtigungseinstellungen neuer Nutzer.</summary>

@@ -1,0 +1,50 @@
+# systemd-Dienst für BudgetPlaner (wird von install.sh nach /etc/systemd/system kopiert, @PORT@ wird ersetzt).
+# Die App lauscht nur lokal; von außen erreichbar ist sie ausschließlich über Tailscale Funnel (HTTPS).
+
+[Unit]
+Description=BudgetPlaner – Familienbudget (PWA)
+Documentation=file:///opt/budgetplaner/README-Pi.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=budgetplaner
+Group=budgetplaner
+WorkingDirectory=/opt/budgetplaner/app
+EnvironmentFile=/etc/budgetplaner/budgetplaner.env
+ExecStart=/opt/budgetplaner/app/BudgetPlaner.Server --urls http://127.0.0.1:@PORT@
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+SyslogIdentifier=budgetplaner
+
+# Ressourcen: läuft neben Mycodo und anderen Diensten; ~150–250 MB im Betrieb.
+MemoryHigh=450M
+MemoryMax=700M
+TasksMax=256
+
+# Härtung: eigener Systemnutzer, nur das Datenverzeichnis ist beschreibbar.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/budgetplaner
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

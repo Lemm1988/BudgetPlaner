@@ -344,5 +344,8 @@
   "chart.amount": "Betrag",
   "chart.share": "Anteil",
   "help.infoAbout": "Erklärung zu „{0}“",
-  "help.moreInGlossary": "Mehr im Glossar"
+  "help.moreInGlossary": "Mehr im Glossar",
+  "nav.admin": "Verwaltung",
+  "auth.registrationAllowList": "Neue Konten gibt es auf diesem Server nur auf Einladung. Schon registriert? Einfach anmelden.",
+  "auth.registrationClosed": "Die Registrierung ist geschlossen – Anmeldung nur mit bestehendem Konto."
 }

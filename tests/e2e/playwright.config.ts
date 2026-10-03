@@ -37,6 +37,7 @@ export default defineConfig({
       App__DataDirectory: DATA,
       App__DevMailbox: 'true',
       App__RequireHttps: 'false',
+      App__AdminEmails: 'admin-e2e@example.com',
       RateLimits__AuthPerMinute: '10000',
       RateLimits__ApiPerMinute: '100000',
     },

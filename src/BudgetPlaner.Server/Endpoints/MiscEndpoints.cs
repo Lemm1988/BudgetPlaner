@@ -80,8 +80,9 @@ public static class MiscEndpoints
             Results.Ok(await s.RestoreAsync(u.Context, id, ct))).WithSummary("Zustand vor einer Änderung wiederherstellen.");
 
         // ---------- Sonstiges ----------
-        app.MapGet("/api/v1/version", (IOptions<AppOptions> o, IEmailSender mail, IPushSender push) =>
-            Results.Ok(new VersionInfo(typeof(Program).Assembly.GetName().Version?.ToString(3) ?? "1.0.0", env.EnvironmentName, o.Value.DevMailbox, mail.IsSmtpConfigured, push.IsConfigured)))
+        app.MapGet("/api/v1/version", async (IOptions<AppOptions> o, IEmailSender mail, IPushSender push, RegistrationPolicy registration, CancellationToken ct) =>
+            Results.Ok(new VersionInfo(typeof(Program).Assembly.GetName().Version?.ToString(3) ?? "1.0.0", env.EnvironmentName, o.Value.DevMailbox,
+                mail.IsSmtpConfigured, push.IsConfigured, (await registration.GetAsync(ct)).Mode)))
             .WithTags("System");
         app.MapPost("/api/v1/feedback", async (FeedbackRequest body, HttpContext http, ProfileService s, CancellationToken ct) =>
         {

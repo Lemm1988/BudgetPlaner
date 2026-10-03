@@ -27,7 +27,7 @@ PATTERNS = [
 ]
 
 DYNAMIC = ["cat.", "rhythm.", "kind.", "group.", "debttype.", "role.", "ampel.", "channel.", "notiftype.", "glossary.", "faq.",
-           "landing.area.", "landing.how.", "theme.", "calc.", "help.", "onboarding.", "release.", "import.field.", "import.target.", "legal."]
+           "landing.area.", "landing.how.", "theme.", "calc.", "help.", "onboarding.", "release.", "import.field.", "import.target.", "legal.", "admin.mode."]
 
 
 DUPLICATES = []

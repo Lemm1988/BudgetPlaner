@@ -83,7 +83,13 @@ Clients holen Deltas über `GET /api/v1/sync?since=n`.
 - [x] Performance, Sicherheitsreview, DSGVO-Checkliste → [ABNAHME.md](ABNAHME.md)
 - [x] README / Betriebsanleitung, Anforderungs-Nachweis vollständig
 
+### Phase 6 – Verwaltung & Betrieb (2026-10-03)
+- [x] Verwaltungsbereich `/verwaltung` (V-01–V-04): Serverstatus, Registrierungsmodus, Konten sperren/entsperren/löschen, Sicherung auf Knopfdruck
+- [x] Raspberry-Pi-Paket `deploy/pi` (V-05): Installation, Tailscale Funnel, Update mit Rollback, Sicherung/Wiederherstellung, systemd-Härtung, Anleitung
+- [x] Tests: 3 Server-Tests (Admin-Rechte, Registrierungsmodi, Sperren/Löschen), 1 E2E-Test (Verwaltung inkl. axe und 320 px); Cross-Build linux-arm64 geprüft
+
 ## Offene Punkte für den Auftraggeber
+- Installation auf dem Raspberry Pi nach [deploy/pi/README.md](../deploy/pi/README.md) (Tailscale-Konto, SMTP-Postfach z. B. IONOS).
 - Echte E-Mail-Zustellung braucht SMTP-Zugangsdaten (bis dahin: Dev-Postfach unter `/dev/postfach`).
 - DoD „PWA auf Android- und iOS-Gerät getestet“ ist ein manueller Schritt (Anleitung im README).
 
@@ -98,3 +104,7 @@ Clients holen Deltas über `GET /api/v1/sync?since=n`.
   Platzhalter in index.html wurden beim Veröffentlichen nicht ersetzt → stabile Routen + Service-Worker-Zuordnung.
   Sicherheitsreview: Dev-Postfach nur Development/Testing, Push-SSRF-Schutz, CSP-WebSocket, App_Data nicht veröffentlichen.
   Stand: 82 Domain-, 28 Server-, 10 E2E-Tests grün; 0 Build-Warnungen.
+- 2026-10-03: Repository privat auf GitHub. Verwaltungsbereich + Registrierungsmodi + Kontosperre (V-01–V-04),
+  Raspberry-Pi-Paket mit Tailscale Funnel (V-05). Nebenbei gefunden: Die Login-Seite rief `/api/v1/version` mit
+  Anmeldepflicht auf und erhielt nie eine Antwort (Hinweise blieben aus) → anonymer Aufruf. Mailversand nutzt das
+  Postfach als Absender, wenn `Smtp:From` leer ist. Stand: 82 Domain-, 31 Server-, 11 E2E-Tests grün; 0 Warnungen.

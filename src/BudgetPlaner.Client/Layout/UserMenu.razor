@@ -24,6 +24,10 @@
                 <a role="menuitem" href="/verlauf" @onclick="Close"><Icon Name="history" />@L["nav.history"]</a>
                 <a role="menuitem" href="/hilfe" @onclick="Close"><Icon Name="help" />@L["nav.help"]</a>
                 <a role="menuitem" href="/rechner" @onclick="Close"><Icon Name="calculator" />@L["nav.calculators"]</a>
+                @if (Session.IsAdmin)
+                {
+                    <a role="menuitem" href="/verwaltung" @onclick="Close"><Icon Name="shield" />@L["nav.admin"]</a>
+                }
                 <div class="sep"></div>
                 <button role="menuitem" @onclick="CycleTheme"><Icon Name="@ThemeIcon" />@L["theme.label"]: @L["theme." + Ui.Theme]</button>
                 <button role="menuitem" @onclick="ToggleLanguage"><Icon Name="globe" />@(L.Lang == "de" ? "English" : "Deutsch")</button>

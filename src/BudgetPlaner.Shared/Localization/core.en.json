@@ -249,5 +249,10 @@
   "month.compensateReason": "Month closing compensation",
   "export.allocation": "Allocation",
   "export.withdrawal": "Withdrawal",
-  "buffer.openingBalance": "Opening balance"
+  "buffer.openingBalance": "Opening balance",
+  "err.registration.closed": "No new account can be created for this email address – registration is restricted. Use your invitation link or contact the operator.",
+  "err.account.blocked": "This account has been blocked by the operator.",
+  "err.forbidden.admin": "This area is for administrators only.",
+  "err.admin.self": "You can't block or delete your own account here.",
+  "err.admin.otherAdmin": "Administrators can't be blocked or deleted – remove them from App:AdminEmails first."
 }

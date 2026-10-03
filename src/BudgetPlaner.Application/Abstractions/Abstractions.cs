@@ -34,6 +34,7 @@ public interface IAppDbContext
     DbSet<ApiToken> ApiTokens { get; }
     DbSet<Feedback> Feedback { get; }
     DbSet<DevMail> DevMails { get; }
+    DbSet<ServerSetting> ServerSettings { get; }
 
     DatabaseFacade Database { get; }
     Microsoft.EntityFrameworkCore.ChangeTracking.ChangeTracker ChangeTracker { get; }

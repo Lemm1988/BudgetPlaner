@@ -43,6 +43,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, IDataPr
     public DbSet<ApiToken> ApiTokens => Set<ApiToken>();
     public DbSet<Feedback> Feedback => Set<Feedback>();
     public DbSet<DevMail> DevMails => Set<DevMail>();
+    public DbSet<ServerSetting> ServerSettings => Set<ServerSetting>();
 
     public void AddEntity(object entity) => Add(entity);
     public void UpdateEntity(object entity) => Update(entity);
@@ -223,6 +224,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, IDataPr
         {
             e.HasKey(x => x.Id);
             e.HasIndex(x => x.CreatedAt);
+        });
+        mb.Entity<ServerSetting>(e =>
+        {
+            e.HasKey(x => x.Key);
+            e.Property(x => x.Key).HasMaxLength(100);
         });
     }
 

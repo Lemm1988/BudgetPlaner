@@ -20,6 +20,9 @@ public sealed class AppSession(BrowserJs browser, HttpClient http)
     public bool IsAuthenticated => Auth is not null;
     public bool IsOwner => User?.Role == Domain.Role.Owner;
 
+    /// <summary>Serveradministrator – blendet nur die Verwaltung ein; der Server prüft jede Admin-Anfrage selbst.</summary>
+    public bool IsAdmin => User?.IsAdmin == true;
+
     public event Action? Changed;
 
     /// <summary>Sitzung ist serverseitig beendet (z. B. Konto gelöscht, Gerät abgemeldet).</summary>

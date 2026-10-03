@@ -28,6 +28,7 @@ keine echten E-Mails verschickt – der Anmeldecode steht im **Entwicklungs-Post
 | `/uebersicht`, `/budget`, `/schulden`, `/cashflow`, `/polster` | Hauptbereiche (mobil als Tab-Leiste) |
 | `/statistik`, `/prognosen` | Auswertungen und Szenarien |
 | `/rechner`, `/glossar` | öffentlich, ohne Anmeldung |
+| `/verwaltung` | nur Administratoren: Serverstatus, Registrierung, Konten sperren/löschen, Sicherung |
 | `/api/docs` | Swagger-UI der REST-API, OpenAPI unter `/openapi/v1.json` |
 | `/dev/postfach` | nur Entwicklung: empfangene E-Mails |
 
@@ -58,6 +59,7 @@ Einstellungen stehen in `src/BudgetPlaner.Server/appsettings.json` oder als Umge
 | Schlüssel | Bedeutung | Standard |
 |-----------|-----------|----------|
 | `App:PublicBaseUrl` | Öffentliche Adresse (Links in E-Mails, Passkeys) | aus der Anfrage |
+| `App:AdminEmails` | Administratoren (Komma-getrennt) – sehen `/verwaltung` | – |
 | `App:RequireHttps` | HTTPS-Umleitung + HSTS | `true` (Entwicklung: `false`) |
 | `App:DataDirectory` | Datenbank, Schlüssel, Sicherungen | `App_Data` |
 | `App:DevMailbox` | E-Mails ins Entwicklungs-Postfach – **nur in Development/Testing wirksam** | `false` |
@@ -82,7 +84,31 @@ Kryptografisch sichere Schlüssel erzeugen, z. B. mit PowerShell 7:
 
 oder `openssl rand -base64 64`.
 
-## Betrieb (Produktion)
+## Betrieb auf dem Raspberry Pi (empfohlen für den Familien-/Freundeskreis)
+
+Fertiges Paket mit Installations-, Update-, Sicherungs- und Tailscale-Skript sowie abgesichertem systemd-Dienst:
+**[deploy/pi/README.md](deploy/pi/README.md)** – Schritt für Schritt, inklusive Erklärung von Tailscale Funnel
+(öffentliche HTTPS-Adresse ohne Portfreigabe und ohne eigene Domain).
+
+```bash
+sudo bash deploy/pi/install.sh --admin du@example.com   # Erstinstallation
+sudo bash deploy/pi/tailscale.sh                         # öffentliche Adresse
+sudo bash deploy/pi/update.sh                            # Update mit automatischem Rollback
+```
+
+## Verwaltung
+
+Wer in `App:AdminEmails` steht, sieht nach der Anmeldung den Menüpunkt **Verwaltung** (`/verwaltung`):
+
+- **Registrierung:** *Offen* (Standard), *Nur Freigegebene* (Adressen/Domains, E-Mail-Einladungen und Einladungslinks)
+  oder *Geschlossen*. Bestehende Konten sind nie betroffen; für abgelehnte Adressen wird keine Mail verschickt.
+- **Konten:** Liste mit Haushalt, letzter Aktivität und Geräten; **sperren** (sofortige Abmeldung auf allen Geräten,
+  API-Zugänge ungültig), entsperren, löschen (wie F-111).
+- **Status:** Konten, Haushalte, Datenbankgröße, Arbeitsspeicher, Sicherungen („Jetzt sichern“), E-Mail-/Push-Status.
+
+Alle Verwaltungsaktionen stehen im Server-Log. API: `/api/v1/admin/*` (nur für Administratoren).
+
+## Betrieb (allgemein)
 
 ```bash
 dotnet publish src/BudgetPlaner.Server -c Release -o publish
