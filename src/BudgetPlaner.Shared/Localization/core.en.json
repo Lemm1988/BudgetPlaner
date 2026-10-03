@@ -254,5 +254,12 @@
   "err.account.blocked": "This account has been blocked by the operator.",
   "err.forbidden.admin": "This area is for administrators only.",
   "err.admin.self": "You can't block or delete your own account here.",
-  "err.admin.otherAdmin": "Administrators can't be blocked or deleted – remove them from App:AdminEmails first."
+  "err.admin.otherAdmin": "Administrators can't be blocked or deleted – remove them from App:AdminEmails first.",
+  "mail.regrequest.subject": "New registration request for BudgetPlaner",
+  "mail.regrequest.intro": "{0} would like to use BudgetPlaner and is waiting for your approval.",
+  "mail.regrequest.button": "Review requests",
+  "mail.regrequest.note": "You'll find further requests in the administration area. This notice is sent at most every 30 minutes.",
+  "mail.regapproved.subject": "You've been approved for BudgetPlaner",
+  "mail.regapproved.intro": "Your request has been approved. You can now sign in with this email address – no password, just a code by email.",
+  "mail.regapproved.button": "Sign in now"
 }

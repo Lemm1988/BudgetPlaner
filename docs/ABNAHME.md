@@ -7,7 +7,7 @@ Stand: 03.10.2026 · Version 1.0.0
 | Suite | Umfang | Ergebnis |
 |-------|--------|----------|
 | `tests/BudgetPlaner.Domain.Tests` | Rechenkern: alle Akzeptanzkriterien mit Zahlenbeispielen, Rechner, Performance | 82/82 ✅ |
-| `tests/BudgetPlaner.Server.Tests` | API, Anmeldung, Rollen, Sync/Merge, Export/Import, Benachrichtigungen, Löschung, Sicherheit, Verwaltung | 31/31 ✅ |
+| `tests/BudgetPlaner.Server.Tests` | API, Anmeldung, Rollen, Sync/Merge, Export/Import, Benachrichtigungen, Löschung, Sicherheit, Verwaltung | 32/32 ✅ |
 | `tests/e2e` (Playwright, Chromium) | DoD-Gesamtdurchlauf, Tastatur, Offline, Echtzeit (2 Geräte), Mobil, Sortiermodus, 200 %-Zoom/320 px, axe (hell + dunkel), Rechner, Verwaltung | 11/11 ✅ |
 | `tools/check_i18n.py` | alle im Code verwendeten Übersetzungsschlüssel in DE und EN, keine Doppelungen | ✅ |
 | `tests/e2e/scripts/release-offline-check.cjs` | Release-Build: Service Worker, Cache, Neustart ohne Netz | ✅ |
@@ -41,7 +41,7 @@ Ladezeiten sind lokal gemessen; über das Internet kommen Netzwerklatenz und die
 | Verschlüsselung ruhender Daten | AES-GCM je Spalte: Beträge, Bezeichnungen, Notizen, Gläubiger, Benachrichtigungstexte, Änderungsverlauf (E-Mail/Name für den Login im Klartext) | ✅ |
 | Browser-Härtung | CSP ohne Inline-Skripte (`script-src 'self' 'wasm-unsafe-eval'`), WebSocket nur zum eigenen Host, `frame-ancestors 'none'`, `nosniff`, Referrer-/Permissions-Policy | ✅ |
 | Missbrauch | Rate-Limits (Anmeldung je IP, API je Nutzer), Push-Abos nur an bekannte Push-Dienste (SSRF-Schutz) | ✅ |
-| Verwaltung | Admins nur per Konfiguration (`App:AdminEmails`), jede Admin-Anfrage serverseitig geprüft; Registrierung einschränkbar (keine Mails an abgelehnte Adressen); Sperre beendet Sitzungen, API-Zugänge und Push-Abos sofort; Aktionen im Log | ✅ |
+| Verwaltung | Admins nur per Konfiguration (`App:AdminEmails`), jede Admin-Anfrage serverseitig geprüft; Registrierung einschränkbar bzw. „Auf Anfrage“ (keine Mails an abgelehnte oder wartende Adressen, Admin-Hinweis gedrosselt); Sperre beendet Sitzungen, API-Zugänge und Push-Abos sofort; Aktionen im Log | ✅ |
 | Betrieb (Raspberry Pi) | App nur auf 127.0.0.1, TLS über Tailscale Funnel, keine Portfreigabe; systemd-Härtung (eigener Nutzer, `ProtectSystem=strict`, `NoNewPrivileges`, keine Capabilities, Speicherlimit); Einstellungen/Schlüssel nur für root und Dienst lesbar | ✅ |
 | Geheimnisse | Schlüssel aus Konfiguration/Umgebung oder beim ersten Start in `App_Data/keys`; `App_Data` ist von Build, Veröffentlichung und Git ausgeschlossen | ✅ |
 | Abhängigkeiten | `dotnet list package --vulnerable --include-transitive`: keine Funde; `npm audit`: 0 | ✅ |
@@ -89,4 +89,4 @@ Touch-Ziele ≥ 44 px, kein horizontales Scrollen bei 200 % Zoom und 320 px Brei
 5. `App:PublicBaseUrl` auf die echte Adresse setzen (Links in E-Mails, Passkeys) – auf dem Pi erledigt das
    `deploy/pi/tailscale.sh`.
 6. Für den Raspberry Pi: [deploy/pi/README.md](../deploy/pi/README.md) – Installation, Tailscale, Registrierungsmodus
-   wählen (empfohlen „Nur Freigegebene“), Sicherung außerhalb des Pi einrichten.
+   prüfen (voreingestellt „Auf Anfrage“), Sicherung außerhalb des Pi einrichten.

@@ -28,6 +28,9 @@ Maßgeblich ist **`deploy/pi/README.md`** (Schritt-für-Schritt-Anleitung). Skri
   unlesbar. Vor riskanten Schritten `backup.sh` ausführen.
 - Diagnose: `systemctl status budgetplaner`, `journalctl -u budgetplaner -n 100`, `curl http://127.0.0.1:5000/health`,
   `tailscale status`, `tailscale funnel status`, `sudo ss -tlnp`.
+- Registrierung ist auf dem Pi „Auf Anfrage“ voreingestellt (`App__DefaultRegistrationMode=approval`): Neue stellen
+  eine Anfrage, der Admin schaltet unter `/verwaltung` frei. Mailversand über ein beliebiges Postfach (Tabelle in der
+  Anleitung, Schritt 3) – Outlook/Hotmail geht nicht.
 - Auf dem Pi laufen außerdem Mycodo (nginx auf 80/443), ein Discord-Bot und iroh – diese nicht anfassen.
 
 ## Entwicklung

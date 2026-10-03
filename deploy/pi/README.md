@@ -21,8 +21,8 @@ Raspberry Pi:  tailscaled ──▶ BudgetPlaner (Dienst „budgetplaner“, nur
 - Raspberry Pi 3/4/5 mit **Raspberry Pi OS 64 Bit** (Bookworm oder neuer). Prüfen: `uname -m` → `aarch64`.
   32 Bit (`armv7l`) funktioniert auch, ist aber langsamer.
 - ~2 GB freier Speicher (`df -h /`), Internetzugang, Zugriff per Terminal/SSH mit `sudo`-Rechten.
-- Ein **E-Mail-Postfach zum Versenden** der Anmeldecodes (z. B. eine Adresse deines IONOS-Pakets). Ohne E-Mail
-  kann sich niemand anmelden – es gibt keine Passwörter.
+- Ein **E-Mail-Postfach zum Versenden** der Anmeldecodes – eine ganz normale Adresse bei Gmail, GMX, WEB.DE, IONOS
+  o. Ä. reicht. Ohne E-Mail kann sich niemand anmelden – es gibt keine Passwörter.
 - Ein kostenloses **Tailscale-Konto** (Anmeldung mit Google, Microsoft, GitHub oder Apple) – wird in Schritt 4 erklärt.
 - Zugriff auf das private GitHub-Repository `Lemm1988/BudgetPlaner`.
 
@@ -73,29 +73,43 @@ installieren. Welche Ports belegt sind, zeigt `sudo ss -tlnp`.
 
 ## 3. E-Mail-Versand einrichten
 
+Die App verschickt Anmeldecodes über ein **ganz normales E-Mail-Postfach** – Gmail, GMX, WEB.DE, IONOS usw.
+
+> **Tipp:** Lege dafür eine **eigene, kostenlose Adresse** an (z. B. `budget.familie.muster@gmx.de`) statt deiner
+> privaten Hauptadresse. Die Empfänger sehen diese Adresse als Absender, und falls doch einmal etwas schiefgeht
+> (Versandlimit, Spam-Verdacht), ist dein eigenes Postfach nicht betroffen. Für 10 Personen reichen die Limits der
+> Gratis-Anbieter (z. B. Gmail ~500 Mails/Tag) bei Weitem.
+
 Die Datei mit den Einstellungen öffnest du **selbst** (das Passwort gehört nicht in Chats oder Notizen):
 
 ```bash
 sudo nano /etc/budgetplaner/budgetplaner.env
 ```
 
-Für ein IONOS-Postfach diese Zeilen ausfüllen:
+Diese Zeilen ausfüllen (Beispiel GMX):
 
 ```ini
-Smtp__Host=smtp.ionos.de
+Smtp__Host=mail.gmx.net
 Smtp__Port=587
 Smtp__Security=StartTls
-Smtp__User=budget@deine-domain.de
-Smtp__Password="dein Postfach-Passwort"
-Smtp__From=budget@deine-domain.de
+Smtp__User=budget.familie.muster@gmx.de
+Smtp__Password="dein Passwort"
 ```
 
 Speichern mit `Strg+O`, `Enter`, beenden mit `Strg+X`, dann `sudo systemctl restart budgetplaner`.
 
-- Absender (`Smtp__From`) muss das Postfach selbst oder ein Alias davon sein, sonst lehnt IONOS ab.
+| Anbieter | `Smtp__Host` | Besonderheit |
+|----------|--------------|--------------|
+| Gmail | `smtp.gmail.com` | Passwort = **App-Passwort** (Google-Konto → Sicherheit → Bestätigung in zwei Schritten aktivieren → App-Passwörter) |
+| GMX | `mail.gmx.net` | In GMX zuerst erlauben: Einstellungen → POP3/IMAP Abruf → „Senden und Empfangen von E-Mails über externe Programme“ |
+| WEB.DE | `smtp.web.de` | wie GMX |
+| IONOS | `smtp.ionos.de` | Passwort des Postfachs |
+| T-Online | `securesmtp.t-online.de` | eigenes **E-Mail-Passwort** (im Kundencenter festlegen) |
+
+- Bei allen: Port 587, `StartTls`, Benutzer = die vollständige Adresse.
+- `Smtp__From` kannst du leer lassen – dann ist das Postfach selbst der Absender (fremde Absender lehnen die Anbieter ab).
+- Outlook/Hotmail-Adressen funktionieren nicht: Microsoft erlaubt dort keine Anmeldung per Passwort aus Programmen mehr.
 - Enthält das Passwort `"` oder `\`, diese als `\"` bzw. `\\` schreiben.
-- Gmail geht auch: `smtp.gmail.com`, Port 587, Benutzer = Gmail-Adresse, Passwort = ein **App-Passwort**
-  (Google-Konto → Sicherheit → App-Passwörter; dafür muss die Bestätigung in zwei Schritten aktiv sein).
 
 Ob der Versand klappt, siehst du in Schritt 5 (die Anmeldemail kommt an) und im Protokoll:
 `journalctl -u budgetplaner -n 50`.
@@ -165,23 +179,31 @@ Hinweise:
 1. Adresse aufrufen → **Anmelden** → deine Admin-Adresse eingeben → Code aus der E-Mail eingeben.
 2. Im Menü erscheint **Verwaltung** (bzw. Avatar oben rechts → Verwaltung). Dort siehst du Serverstatus,
    E-Mail/Push-Status, Sicherungen und alle Konten.
-3. **Registrierung** wählen:
-   - **Offen** – jeder, der die Adresse kennt, kann ein Konto anlegen (Standard).
-   - **Nur Freigegebene** – neue Konten nur für eingetragene Adressen/Domains, für Personen mit E-Mail-Einladung
-     zu einem Haushalt und über Einladungslinks. **Empfohlen.**
+3. **Registrierung** – auf dem Pi ist **„Auf Anfrage“** voreingestellt. In der Verwaltung jederzeit umschaltbar:
+   - **Offen** – jeder, der die Adresse kennt, kann sofort ein Konto anlegen.
+   - **Auf Anfrage** *(voreingestellt, empfohlen)* – wer neu ist, gibt einfach die eigene E-Mail-Adresse ein und stellt
+     damit eine Anfrage. Dabei wird **keine** Mail verschickt. Du bekommst einen Hinweis per Mail, klickst in der
+     Verwaltung auf **Freischalten**, und erst dann bekommt die Person eine Mail mit dem Anmeldelink.
+   - **Nur Freigegebene** – nur Adressen/Domains, die du einträgst, und Eingeladene; alle anderen werden abgewiesen.
    - **Geschlossen** – keine neuen Konten (außer Admins). Bestehende Konten melden sich weiter an.
 
-> **Warum „Nur Freigegebene“?** Funnel-Adressen sind öffentlich und tauchen in Zertifikatsverzeichnissen auf – Bots
-> finden sie. Bei offener Registrierung könnte jeder Fremde Konten anlegen und deinen Server Anmeldemails an
-> beliebige Adressen schicken lassen. Das schadet dem Ruf deines Postfachs, im schlimmsten Fall sperrt IONOS es.
-> Bei „Nur Freigegebene“ wird für unbekannte Adressen gar nicht erst eine Mail verschickt. Einzelne Konten kannst du
-> in der Verwaltung jederzeit **sperren** (sofort auf allen Geräten abgemeldet) oder **löschen**.
+   Wer schon ein Konto hat, meldet sich immer ganz normal an. Wer zu einem Haushalt eingeladen wurde, kommt in allen
+   Modi außer „Geschlossen“ direkt hinein.
+
+> **Warum nicht „Offen“?** Funnel-Adressen sind öffentlich und tauchen in Zertifikatsverzeichnissen auf – Bots
+> finden sie. Bei offener Registrierung könnte jeder Fremde deinen Server Mails an beliebige Adressen schicken lassen.
+> Das schadet dem Ruf deines Postfachs, im schlimmsten Fall sperrt der Anbieter es. Eine klassische Registrierung mit
+> Passwort hilft dagegen nicht: Auch sie muss die Adresse per Mail bestätigen. Darum entscheidet bei „Auf Anfrage“
+> erst ein Mensch, bevor eine Mail an eine neue Adresse geht. Einzelne Konten kannst du jederzeit **sperren**
+> (sofort auf allen Geräten abgemeldet) oder **löschen**.
 
 ## 6. Nutzer einladen und App aufs Handy
 
-- Adresse weitergeben (bei „Nur Freigegebene“ vorher die E-Mail-Adressen in der Verwaltung eintragen).
+- Adresse weitergeben. Bei „Auf Anfrage“ geben die Leute dort ihre E-Mail-Adresse ein, du schaltest sie in der
+  Verwaltung frei, und sie bekommen eine Mail mit dem Anmeldelink. (Bei „Nur Freigegebene“ trägst du die Adressen
+  vorher selbst ein.)
 - Wer **gemeinsam** einen Haushalt führt: Eine Person lädt die anderen unter **Haushalt → Mitglied einladen** ein
-  (per E-Mail oder Link). Einladungen funktionieren auch bei „Nur Freigegebene“.
+  (per E-Mail oder Link). Eingeladene brauchen keine Freischaltung (außer im Modus „Geschlossen“).
 - **Android (Chrome):** Adresse öffnen → Menü ⋮ → **App installieren**.
 - **iPhone (Safari):** Adresse öffnen → Teilen-Symbol → **Zum Home-Bildschirm**. Push-Mitteilungen gibt es auf dem
   iPhone nur in der installierten App (ab iOS 16.4).
@@ -257,6 +279,7 @@ sudo ss -tlnp                                 # welche Ports sind belegt?
 | Passkey funktioniert nicht | Passkeys gelten nur für genau die Adresse in `App__PublicBaseUrl`. Nach einer Adressänderung neu einrichten. |
 | Adresse nicht erreichbar | `tailscale status` (verbunden?), `tailscale funnel status`, in der Verwaltung HTTPS/Funnel aktiv? Key expiry abgelaufen → `sudo tailscale up`. |
 | „Registrierung eingeschränkt“ | In der Verwaltung Adresse freigeben oder per Haushaltseinladung einladen. |
+| „Anfrage gesendet“, aber keine Freischalt-Mail | In der Verwaltung unter „Registrierungsanfragen“ freischalten; SMTP prüfen (Zeile „E-Mail-Versand“ im Status). |
 | Dienst startet nicht | `journalctl -u budgetplaner -n 100`. Sollte eine Härtungsoption in `/etc/systemd/system/budgetplaner.service` stören: Zeile mit `#` auskommentieren, `sudo systemctl daemon-reload && sudo systemctl restart budgetplaner`. |
 | Port belegt | `sudo bash deploy/pi/install.sh --port 5080`, danach `sudo bash deploy/pi/tailscale.sh`. |
 | Admin-Menü fehlt | `App__AdminEmails` in der .env-Datei prüfen (genau die Anmeldeadresse), Dienst neu starten, neu anmelden. |

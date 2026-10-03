@@ -33,9 +33,17 @@ public sealed class AppOptions
     /// </summary>
     public string AdminEmails { get; set; } = "";
 
+    public string[] AdminEmailList() =>
+        AdminEmails.Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
     public bool IsAdmin(string? email) =>
-        !string.IsNullOrWhiteSpace(email) && AdminEmails.Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Any(a => string.Equals(a, email.Trim(), StringComparison.OrdinalIgnoreCase));
+        !string.IsNullOrWhiteSpace(email) && AdminEmailList().Any(a => string.Equals(a, email.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Registrierungsmodus, solange in der Verwaltung keiner gewählt wurde: „open“, „approval“, „allowlist“ oder
+    /// „closed“. Auf dem Raspberry Pi voreingestellt: „approval“ (öffentliche Adresse, keine Mails an Unbekannte).
+    /// </summary>
+    public string DefaultRegistrationMode { get; set; } = "open";
 
     /// <summary>Öffentliche Basis-URL für Links in E-Mails (Magic Link, Einladung).</summary>
     public string PublicBaseUrl { get; set; } = "https://localhost:7264";

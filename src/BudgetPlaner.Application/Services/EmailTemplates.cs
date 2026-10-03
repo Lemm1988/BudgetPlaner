@@ -56,6 +56,30 @@ public static class EmailTemplates
         return new EmailMessage(to, title, html, $"{title}\n\n{body}\n{link}");
     }
 
+    /// <summary>An die Administratoren: neue Registrierungsanfrage (Modus „Auf Anfrage“, höchstens alle 30 Minuten).</summary>
+    public static EmailMessage RegistrationRequested(string lang, string to, string requester, string link)
+    {
+        var intro = Texts.Get(lang, "mail.regrequest.intro", requester);
+        var note = Texts.Get(lang, "mail.regrequest.note");
+        var html = Layout(lang, intro, $"""
+            <p>{E(intro)}</p>
+            {Button(link, Texts.Get(lang, "mail.regrequest.button"))}
+            <p style="color:#555">{E(note)}</p>
+            """);
+        return new EmailMessage(to, Texts.Get(lang, "mail.regrequest.subject"), html, $"{intro}\n{link}\n\n{note}");
+    }
+
+    /// <summary>An die freigeschaltete Person: Link zur Anmeldung mit vorausgefüllter Adresse.</summary>
+    public static EmailMessage RegistrationApproved(string lang, string to, string link)
+    {
+        var intro = Texts.Get(lang, "mail.regapproved.intro");
+        var html = Layout(lang, intro, $"""
+            <p>{E(intro)}</p>
+            {Button(link, Texts.Get(lang, "mail.regapproved.button"))}
+            """);
+        return new EmailMessage(to, Texts.Get(lang, "mail.regapproved.subject"), html, $"{intro}\n{link}");
+    }
+
     public static EmailMessage AccountDeleted(string lang, string to)
     {
         var body = Texts.Get(lang, "mail.deleted.body");

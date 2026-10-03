@@ -60,6 +60,7 @@ Einstellungen stehen in `src/BudgetPlaner.Server/appsettings.json` oder als Umge
 |-----------|-----------|----------|
 | `App:PublicBaseUrl` | Öffentliche Adresse (Links in E-Mails, Passkeys) | aus der Anfrage |
 | `App:AdminEmails` | Administratoren (Komma-getrennt) – sehen `/verwaltung` | – |
+| `App:DefaultRegistrationMode` | Registrierung, solange in der Verwaltung nichts gewählt ist: `open`, `approval`, `allowlist`, `closed` | `open` |
 | `App:RequireHttps` | HTTPS-Umleitung + HSTS | `true` (Entwicklung: `false`) |
 | `App:DataDirectory` | Datenbank, Schlüssel, Sicherungen | `App_Data` |
 | `App:DevMailbox` | E-Mails ins Entwicklungs-Postfach – **nur in Development/Testing wirksam** | `false` |
@@ -100,8 +101,10 @@ sudo bash deploy/pi/update.sh                            # Update mit automatisc
 
 Wer in `App:AdminEmails` steht, sieht nach der Anmeldung den Menüpunkt **Verwaltung** (`/verwaltung`):
 
-- **Registrierung:** *Offen* (Standard), *Nur Freigegebene* (Adressen/Domains, E-Mail-Einladungen und Einladungslinks)
-  oder *Geschlossen*. Bestehende Konten sind nie betroffen; für abgelehnte Adressen wird keine Mail verschickt.
+- **Registrierung:** *Offen* (Standard, `App:DefaultRegistrationMode`), *Auf Anfrage* (Neue stellen eine Anfrage, ein
+  Admin schaltet frei – erst dann geht eine Mail an die Adresse; auf dem Pi voreingestellt), *Nur Freigegebene*
+  (Adressen/Domains, E-Mail-Einladungen und Einladungslinks) oder *Geschlossen*. Bestehende Konten sind nie betroffen;
+  an abgelehnte oder wartende Adressen wird keine Mail verschickt.
 - **Konten:** Liste mit Haushalt, letzter Aktivität und Geräten; **sperren** (sofortige Abmeldung auf allen Geräten,
   API-Zugänge ungültig), entsperren, löschen (wie F-111).
 - **Status:** Konten, Haushalte, Datenbankgröße, Arbeitsspeicher, Sicherungen („Jetzt sichern“), E-Mail-/Push-Status.

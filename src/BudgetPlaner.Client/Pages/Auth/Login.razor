@@ -16,11 +16,11 @@
         {
             <h1>@L["auth.title"]</h1>
             <p class="muted">@L["auth.intro"]</p>
-            @if (_registration is RegistrationModes.AllowList or RegistrationModes.Closed)
+            @if (RegistrationHint is { } hint)
             {
                 <div class="notice info mb-1" role="status">
                     <Icon Name="lock" />
-                    <div class="small">@L[_registration == RegistrationModes.Closed ? "auth.registrationClosed" : "auth.registrationAllowList"]</div>
+                    <div class="small">@L[hint]</div>
                 </div>
             }
             <form @onsubmit="RequestAsync" @onsubmit:preventDefault="true" class="stack">
@@ -44,6 +44,17 @@
                 <button class="btn btn-block" @onclick="PasskeyAsync" disabled="@_busy"><Icon Name="fingerprint" />@L["auth.passkey"]</button>
             }
             <p class="small muted mt-2">@L["auth.noPassword"]</p>
+        }
+        else if (_step == 3)
+        {
+            <h1>@L["auth.pendingTitle"]</h1>
+            <div class="notice info" role="status">
+                <Icon Name="clock" />
+                <div>@((MarkupString)L.T("auth.pendingText", System.Net.WebUtility.HtmlEncode(_email)))</div>
+            </div>
+            <div class="mt-2">
+                <button class="btn btn-ghost btn-sm" @onclick="() => { _step = 1; _error = null; }"><Icon Name="chevron-left" />@L["auth.otherEmail"]</button>
+            </div>
         }
         else
         {
@@ -97,6 +108,17 @@
 
     [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
 
+    /// <summary>Vorausgefüllte Adresse, z. B. aus der Freischalt-Mail.</summary>
+    [SupplyParameterFromQuery] public string? Email { get; set; }
+
+    private string? RegistrationHint => _registration switch
+    {
+        RegistrationModes.Approval => "auth.registrationApproval",
+        RegistrationModes.AllowList => "auth.registrationAllowList",
+        RegistrationModes.Closed => "auth.registrationClosed",
+        _ => null,
+    };
+
     private string Digits => new(_code.Where(char.IsDigit).ToArray());
 
     protected override async Task OnInitializedAsync()
@@ -106,6 +128,7 @@
             Nav.NavigateTo(SafeReturn ?? "/uebersicht", replace: true);
             return;
         }
+        if (!string.IsNullOrWhiteSpace(Email)) _email = Email.Trim();
         _passkeys = await Browser.Call<bool>("passkeysSupported");
         try
         {
@@ -125,6 +148,11 @@
         try
         {
             var result = await Api.PostAsync<LoginRequestResult>("api/v1/auth/request", new LoginRequest(_email.Trim(), L.Lang, SafeReturn), auth: false);
+            if (result.PendingApproval)
+            {
+                _step = 3;
+                return;
+            }
             _step = 2;
             StartCooldown(result.RetryAfterSeconds);
         }

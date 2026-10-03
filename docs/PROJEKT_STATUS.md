@@ -86,10 +86,11 @@ Clients holen Deltas über `GET /api/v1/sync?since=n`.
 ### Phase 6 – Verwaltung & Betrieb (2026-10-03)
 - [x] Verwaltungsbereich `/verwaltung` (V-01–V-04): Serverstatus, Registrierungsmodus, Konten sperren/entsperren/löschen, Sicherung auf Knopfdruck
 - [x] Raspberry-Pi-Paket `deploy/pi` (V-05): Installation, Tailscale Funnel, Update mit Rollback, Sicherung/Wiederherstellung, systemd-Härtung, Anleitung
-- [x] Tests: 3 Server-Tests (Admin-Rechte, Registrierungsmodi, Sperren/Löschen), 1 E2E-Test (Verwaltung inkl. axe und 320 px); Cross-Build linux-arm64 geprüft
+- [x] Registrierung „Auf Anfrage“ (V-06): Anfrage ohne Mail, Freischalten/Ablehnen, Admin-Hinweis; auf dem Pi voreingestellt
+- [x] Tests: 4 Server-Tests (Admin-Rechte, Registrierungsmodi, Anfrage/Freischalten, Sperren/Löschen), 1 E2E-Test (Verwaltung inkl. Freischalt-Ablauf, axe und 320 px); Cross-Build linux-arm64 geprüft
 
 ## Offene Punkte für den Auftraggeber
-- Installation auf dem Raspberry Pi nach [deploy/pi/README.md](../deploy/pi/README.md) (Tailscale-Konto, SMTP-Postfach z. B. IONOS).
+- Installation auf dem Raspberry Pi nach [deploy/pi/README.md](../deploy/pi/README.md) (Tailscale-Konto, beliebiges SMTP-Postfach, z. B. eine eigene GMX- oder Gmail-Adresse).
 - Echte E-Mail-Zustellung braucht SMTP-Zugangsdaten (bis dahin: Dev-Postfach unter `/dev/postfach`).
 - DoD „PWA auf Android- und iOS-Gerät getestet“ ist ein manueller Schritt (Anleitung im README).
 
@@ -108,3 +109,6 @@ Clients holen Deltas über `GET /api/v1/sync?since=n`.
   Raspberry-Pi-Paket mit Tailscale Funnel (V-05). Nebenbei gefunden: Die Login-Seite rief `/api/v1/version` mit
   Anmeldepflicht auf und erhielt nie eine Antwort (Hinweise blieben aus) → anonymer Aufruf. Mailversand nutzt das
   Postfach als Absender, wenn `Smtp:From` leer ist. Stand: 82 Domain-, 31 Server-, 11 E2E-Tests grün; 0 Warnungen.
+- 2026-10-03: Rückfrage „normale Registrierung statt Mails an jeden?“ → Modus „Auf Anfrage“ (V-06) statt Passwort-
+  Registrierung (V-07, Widerspruch zu F-001). Anleitung: beliebiges Postfach (Gmail, GMX, WEB.DE, IONOS, T-Online).
+  Stand: 82 Domain-, 32 Server-, 11 E2E-Tests grün.

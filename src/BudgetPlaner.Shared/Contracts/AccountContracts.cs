@@ -82,14 +82,21 @@ public sealed record VersionInfo(string Version, string Environment, bool DevMai
 
 // ---------- Verwaltung (Administrator) ----------
 
-/// <summary>Registrierungsmodus: jeder, nur freigegebene Adressen (+ E-Mail-Einladungen) oder niemand (außer Admins).</summary>
+/// <summary>
+/// Registrierungsmodus: jeder („open“), auf Anfrage mit Freischaltung durch einen Administrator („approval“),
+/// nur freigegebene Adressen und Eingeladene („allowlist“) oder niemand außer Administratoren („closed“).
+/// </summary>
 public static class RegistrationModes
 {
     public const string Open = "open";
+    public const string Approval = "approval";
     public const string AllowList = "allowlist";
     public const string Closed = "closed";
-    public static readonly string[] All = [Open, AllowList, Closed];
+    public static readonly string[] All = [Open, Approval, AllowList, Closed];
 }
+
+/// <summary>Offene Registrierungsanfrage (Modus „approval“).</summary>
+public sealed record RegistrationRequestDto(Guid Id, string Email, DateTimeOffset CreatedAt, DateTimeOffset LastRequestedAt, int Count);
 
 public sealed record RegistrationSettingsDto(string Mode, IReadOnlyList<string> AllowList);
 

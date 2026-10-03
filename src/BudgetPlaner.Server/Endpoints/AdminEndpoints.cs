@@ -49,7 +49,17 @@ public static class AdminEndpoints
         admin.MapGet("/registration", async (AdminService s, CancellationToken ct) => Results.Ok(await s.GetRegistrationAsync(ct)))
             .WithSummary("Registrierungsmodus und Freigabeliste.");
         admin.MapPut("/registration", async (RegistrationSettingsDto body, RequestUser u, AdminService s, CancellationToken ct) =>
-            Results.Ok(await s.SetRegistrationAsync(u.Context, body, ct))).WithSummary("Registrierung: open, allowlist oder closed.");
+            Results.Ok(await s.SetRegistrationAsync(u.Context, body, ct))).WithSummary("Registrierung: open, approval, allowlist oder closed.");
+        admin.MapGet("/registration-requests", async (AdminService s, CancellationToken ct) => Results.Ok(await s.RequestsAsync(ct)))
+            .WithSummary("Offene Registrierungsanfragen (Modus „approval“).");
+        admin.MapPost("/registration-requests/{id:guid}/approve", async (Guid id, RequestUser u, AdminService s, CancellationToken ct) =>
+            Results.Ok(await s.ApproveAsync(u.Context, id, ct)))
+            .WithSummary("Anfrage freischalten: Adresse auf die Freigabeliste, Mail mit Anmeldelink an die Person.");
+        admin.MapDelete("/registration-requests/{id:guid}", async (Guid id, RequestUser u, AdminService s, CancellationToken ct) =>
+        {
+            await s.RejectAsync(u.Context, id, ct);
+            return Results.NoContent();
+        }).WithSummary("Anfrage ablehnen (ohne Mail).");
 
         admin.MapPost("/backup", async (BackupService backups, CancellationToken ct) =>
         {

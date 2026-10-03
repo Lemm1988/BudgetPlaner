@@ -85,6 +85,7 @@ Testsuiten: **D** = `tests/BudgetPlaner.Domain.Tests` (82) · **S** = `tests/Bud
 | ID | Umsetzung | Nachweis |
 |----|-----------|----------|
 | V-01–V-04 | Verwaltung `/verwaltung` (nur `App:AdminEmails`): Status, Registrierung offen/nur Freigegebene/geschlossen, Sperren/Entsperren/Löschen, Sicherung | S: „Verwaltung: nur für Administratoren …“, „… Registrierung offen / nur Freigegebene …“, „… Sperren beendet Sitzungen …“ · E: „Verwaltung: …“ (inkl. axe, 320 px) |
+| V-06/V-07 | Registrierung „Auf Anfrage“: Anfrage ohne Mail, Admin-Hinweis (max. alle 30 min), Freischalten/Ablehnen in `/verwaltung` | S: „Verwaltung: Registrierung auf Anfrage …“ · E: „Verwaltung: …“ (Anfrage → Freischalten → Anmeldung) |
 | V-05 | Betrieb auf dem Raspberry Pi hinter Tailscale Funnel (`deploy/pi`) | Cross-Build `linux-arm64` (ELF AArch64, SQLite nativ, `wwwroot`) · Anleitung `deploy/pi/README.md` |
 
 ## Nicht-funktionale Anforderungen

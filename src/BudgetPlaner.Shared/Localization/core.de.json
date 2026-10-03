@@ -254,5 +254,12 @@
   "err.account.blocked": "Dieses Konto wurde vom Betreiber gesperrt.",
   "err.forbidden.admin": "Dieser Bereich ist nur für Administratoren.",
   "err.admin.self": "Das eigene Konto kannst du hier nicht sperren oder löschen.",
-  "err.admin.otherAdmin": "Administratoren können nicht gesperrt oder gelöscht werden – zuerst aus App:AdminEmails entfernen."
+  "err.admin.otherAdmin": "Administratoren können nicht gesperrt oder gelöscht werden – zuerst aus App:AdminEmails entfernen.",
+  "mail.regrequest.subject": "Neue Registrierungsanfrage für BudgetPlaner",
+  "mail.regrequest.intro": "{0} möchte BudgetPlaner nutzen und wartet auf deine Freischaltung.",
+  "mail.regrequest.button": "Anfragen ansehen",
+  "mail.regrequest.note": "Weitere Anfragen findest du in der Verwaltung. Dieser Hinweis kommt höchstens alle 30 Minuten.",
+  "mail.regapproved.subject": "Du bist für BudgetPlaner freigeschaltet",
+  "mail.regapproved.intro": "Deine Anfrage wurde angenommen. Du kannst dich jetzt mit dieser E-Mail-Adresse anmelden – ohne Passwort, mit einem Code per Mail.",
+  "mail.regapproved.button": "Jetzt anmelden"
 }

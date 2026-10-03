@@ -347,5 +347,8 @@
   "help.moreInGlossary": "Mehr im Glossar",
   "nav.admin": "Verwaltung",
   "auth.registrationAllowList": "Neue Konten gibt es auf diesem Server nur auf Einladung. Schon registriert? Einfach anmelden.",
-  "auth.registrationClosed": "Die Registrierung ist geschlossen – Anmeldung nur mit bestehendem Konto."
+  "auth.registrationClosed": "Die Registrierung ist geschlossen – Anmeldung nur mit bestehendem Konto.",
+  "auth.registrationApproval": "Neue Konten schaltet der Betreiber frei: Mit deiner E-Mail-Adresse stellst du eine Anfrage. Schon registriert? Einfach anmelden.",
+  "auth.pendingTitle": "Anfrage gesendet",
+  "auth.pendingText": "Für {0} gibt es noch kein Konto – deine Anfrage liegt jetzt beim Betreiber. Sobald du freigeschaltet bist, bekommst du eine E-Mail und kannst dich anmelden."
 }

@@ -34,6 +34,20 @@ public sealed class User
     public DateTimeOffset? PendingEmailExpiresAt { get; set; }
 }
 
+/// <summary>
+/// Registrierungsanfrage im Modus „Auf Anfrage“: Unbekannte Adressen erhalten keine Mail, sondern warten auf die
+/// Freischaltung durch einen Administrator (V-06). Je Adresse höchstens eine Anfrage.
+/// </summary>
+public sealed class RegistrationRequest
+{
+    public Guid Id { get; set; }
+    public string Email { get; set; } = "";
+    public string Language { get; set; } = "de";
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset LastRequestedAt { get; set; }
+    public int Count { get; set; }
+}
+
 /// <summary>Serverweite Einstellung, die der Administrator zur Laufzeit ändert (z. B. Registrierungsmodus).</summary>
 public sealed class ServerSetting
 {

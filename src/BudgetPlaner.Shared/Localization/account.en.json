@@ -289,5 +289,18 @@
   "admin.deleteTitle": "Delete account permanently?",
   "admin.deleteText": "The account {0} and the household “{1}” with all its data will be deleted irreversibly.",
   "admin.deleteTextShared": "The account {0} will be deleted irreversibly. The household “{1}” stays available to its other members.",
-  "admin.deleted": "{0} has been deleted."
+  "admin.deleted": "{0} has been deleted.",
+  "admin.mode.approval": "On request",
+  "admin.mode.approval.hint": "Newcomers enter their email address to send a request – no email is sent at that point. You approve the request here; only then does the person receive an email. Listed addresses and invitees get in directly.",
+  "admin.requests": "Registration requests",
+  "admin.requestsLead": "These people would like to use BudgetPlaner. When approved, they receive an email with the sign-in link; rejecting sends nothing.",
+  "admin.noRequests": "No open requests.",
+  "admin.requestedAgo": "requested {0}",
+  "admin.requestCount": "requested {0}×",
+  "admin.approve": "Approve",
+  "admin.reject": "Reject",
+  "admin.approveUser": "Approve {0}",
+  "admin.rejectUser": "Reject request from {0}",
+  "admin.approved": "{0} is approved and will receive an email.",
+  "admin.rejected": "Request from {0} rejected."
 }

@@ -97,7 +97,7 @@
                         </div>
                     </fieldset>
                     <p class="small muted mb-0" aria-live="polite">@L["admin.mode." + _mode + ".hint"]</p>
-                    @if (_mode == RegistrationModes.AllowList)
+                    @if (_mode is RegistrationModes.AllowList or RegistrationModes.Approval)
                     {
                         <div class="field">
                             <label for="ad-allow">@L["admin.allowList"]</label>
@@ -108,6 +108,46 @@
                     <div><button type="submit" class="btn btn-primary" disabled="@_busy"><Icon Name="check" />@L["action.save"]</button></div>
                 </form>
             </section>
+
+            @if (_mode == RegistrationModes.Approval || _requests is { Count: > 0 })
+            {
+                <section class="card" aria-labelledby="ad-requests">
+                    <div class="card-head">
+                        <h2 id="ad-requests"><Icon Name="mail" />@L["admin.requests"]</h2>
+                        @if (_requests is { Count: > 0 })
+                        {
+                            <span class="badge warn">@_requests.Count</span>
+                        }
+                    </div>
+                    <p class="small muted">@L["admin.requestsLead"]</p>
+                    @if (_requests is not { Count: > 0 })
+                    {
+                        <p class="small muted mb-0">@L["admin.noRequests"]</p>
+                    }
+                    else
+                    {
+                        <ul class="list">
+                            @foreach (var request in _requests)
+                            {
+                                var r = request;
+                                <li class="list-row admin-user" data-request="@r.Email">
+                                    <Icon Name="user" />
+                                    <div class="grow">
+                                        <div class="truncate"><strong>@r.Email</strong></div>
+                                        <div class="small muted">
+                                            @L.T("admin.requestedAgo", L.Ago(r.LastRequestedAt))@(r.Count > 1 ? " · " + L.T("admin.requestCount", r.Count) : string.Empty)
+                                        </div>
+                                    </div>
+                                    <div class="row" style="gap:.25rem">
+                                        <button class="btn btn-sm btn-primary" disabled="@_busy" @onclick="() => ApproveAsync(r)" aria-label="@L.T("admin.approveUser", r.Email)"><Icon Name="check" />@L["admin.approve"]</button>
+                                        <button class="btn btn-sm btn-ghost" disabled="@_busy" @onclick="() => RejectAsync(r)" aria-label="@L.T("admin.rejectUser", r.Email)"><Icon Name="x" />@L["admin.reject"]</button>
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </section>
+            }
 
             <section class="card" aria-labelledby="ad-users">
                 <div class="card-head">
@@ -192,6 +232,7 @@
 @code {
     private AdminOverviewDto? _overview;
     private List<AdminUserDto>? _users;
+    private List<RegistrationRequestDto>? _requests;
     private string _mode = RegistrationModes.Open;
     private string _allowList = "";
     private string _search = "";
@@ -218,6 +259,7 @@
             var reg = await Api.GetAsync<RegistrationSettingsDto>("api/v1/admin/registration");
             _mode = reg.Mode;
             _allowList = string.Join('\n', reg.AllowList);
+            _requests = await Api.GetAsync<List<RegistrationRequestDto>>("api/v1/admin/registration-requests");
             await LoadUsersAsync();
         }
         catch (Exception ex) { ShowError(ex); }
@@ -236,6 +278,35 @@
             _allowList = string.Join('\n', saved.AllowList);
             if (_overview is not null) _overview = _overview with { RegistrationMode = saved.Mode };
             Toasts.Success(L["admin.registrationSaved"]);
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+
+    private async Task ApproveAsync(RegistrationRequestDto r)
+    {
+        _busy = true;
+        try
+        {
+            await Api.PostAsync($"api/v1/admin/registration-requests/{r.Id}/approve");
+            _requests?.Remove(r);
+            // Ungespeicherte Änderungen an der Liste behalten, freigeschaltete Adresse ergänzen.
+            if (!_allowList.Split('\n', StringSplitOptions.TrimEntries).Contains(r.Email, StringComparer.OrdinalIgnoreCase))
+                _allowList = string.IsNullOrWhiteSpace(_allowList) ? r.Email : _allowList.TrimEnd() + "\n" + r.Email;
+            Toasts.Success(L.T("admin.approved", r.Email));
+        }
+        catch (Exception ex) { ShowError(ex); }
+        finally { _busy = false; }
+    }
+
+    private async Task RejectAsync(RegistrationRequestDto r)
+    {
+        _busy = true;
+        try
+        {
+            await Api.DeleteAsync($"api/v1/admin/registration-requests/{r.Id}");
+            _requests?.Remove(r);
+            Toasts.Info(L.T("admin.rejected", r.Email));
         }
         catch (Exception ex) { ShowError(ex); }
         finally { _busy = false; }

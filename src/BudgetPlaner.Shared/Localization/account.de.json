@@ -289,5 +289,18 @@
   "admin.deleteTitle": "Konto endgültig löschen?",
   "admin.deleteText": "Das Konto {0} und der Haushalt „{1}“ mit allen Daten werden unwiderruflich gelöscht.",
   "admin.deleteTextShared": "Das Konto {0} wird unwiderruflich gelöscht. Der Haushalt „{1}“ bleibt für die übrigen Mitglieder erhalten.",
-  "admin.deleted": "{0} wurde gelöscht."
+  "admin.deleted": "{0} wurde gelöscht.",
+  "admin.mode.approval": "Auf Anfrage",
+  "admin.mode.approval.hint": "Wer neu ist, gibt die eigene E-Mail-Adresse ein und stellt damit eine Anfrage – dabei wird keine Mail verschickt. Du schaltest die Anfrage hier frei, erst dann bekommt die Person eine E-Mail. Adressen auf der Liste und Eingeladene kommen direkt hinein.",
+  "admin.requests": "Registrierungsanfragen",
+  "admin.requestsLead": "Diese Personen möchten BudgetPlaner nutzen. Beim Freischalten bekommen sie eine E-Mail mit dem Anmeldelink; Ablehnen verschickt nichts.",
+  "admin.noRequests": "Keine offenen Anfragen.",
+  "admin.requestedAgo": "angefragt {0}",
+  "admin.requestCount": "{0}× angefragt",
+  "admin.approve": "Freischalten",
+  "admin.reject": "Ablehnen",
+  "admin.approveUser": "{0} freischalten",
+  "admin.rejectUser": "Anfrage von {0} ablehnen",
+  "admin.approved": "{0} ist freigeschaltet und bekommt eine E-Mail.",
+  "admin.rejected": "Anfrage von {0} abgelehnt."
 }

@@ -26,7 +26,18 @@ public sealed class AuthService(IAppDbContext db, IClock clock, IEmailQueue mail
         // Sperre und Registrierungsmodus vor dem Rate-Limit prüfen: es wird keine Mail verschickt, die Meldung ist eindeutig.
         var existingUser = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Email == email, ct);
         if (existingUser?.BlockedAt is not null) throw AppException.Forbidden("err.account.blocked");
-        if (existingUser is null && !await registration.CanRegisterAsync(email, request.ReturnUrl, ct)) throw AppException.Forbidden("err.registration.closed");
+        if (existingUser is null)
+        {
+            switch (await registration.CheckAsync(email, request.ReturnUrl, ct))
+            {
+                case RegistrationDecision.Denied:
+                    throw AppException.Forbidden("err.registration.closed");
+                case RegistrationDecision.NeedsApproval:
+                    // „Auf Anfrage“: keine Mail an die (evtl. fremde) Adresse – die Anfrage wartet auf einen Administrator.
+                    await registration.RequestAccessAsync(email, Texts.Normalize(request.Language), ct);
+                    return new LoginRequestResult(false, 0, PendingApproval: true);
+            }
+        }
 
         // Rate-Limit: höchstens eine Anforderung je 60 Sekunden und Adresse.
         var last = await db.LoginTokens.Where(t => t.Email == email).OrderByDescending(t => t.CreatedAt).FirstOrDefaultAsync(ct);

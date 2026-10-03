@@ -122,6 +122,68 @@ public class AdminTests
         Assert.Equal(HttpStatusCode.OK, (await RequestLoginAsync(app, "fremd@example.com")).StatusCode);
     }
 
+    /// <summary>Wartet auf die neueste Mail an <paramref name="to"/>, die <paramref name="contains"/> enthält.</summary>
+    private static async Task<string> WaitForMailContainingAsync(HttpClient http, string to, string contains)
+    {
+        for (var i = 0; i < 100; i++)
+        {
+            var res = await http.GetAsync($"/api/v1/dev/latest-mail?to={Uri.EscapeDataString(to)}");
+            if (res.StatusCode == HttpStatusCode.OK)
+            {
+                var text = (await res.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("text").GetString()!;
+                if (text.Contains(contains, StringComparison.Ordinal)) return text;
+            }
+            await Task.Delay(100);
+        }
+        throw new TimeoutException($"Keine Mail an {to} mit „{contains}“.");
+    }
+
+    [Fact(DisplayName = "Verwaltung: Registrierung auf Anfrage – keine Mail an Unbekannte, Admin wird informiert, Freischalten sendet den Anmeldelink")]
+    public async Task ApprovalFlow()
+    {
+        using var app = new TestApp(("App:LoginRateLimitSeconds", "0"), ("App:DefaultRegistrationMode", RegistrationModes.Approval));
+        var anonymous = app.Anonymous();
+        var version = await anonymous.GetFromJsonAsync<VersionInfo>("/api/v1/version", JsonDefaults.Options);
+        Assert.Equal(RegistrationModes.Approval, version!.RegistrationMode);
+        var admin = await app.LoginAsync(Admin);
+
+        // Unbekannte Adresse: Anfrage statt Mail; doppelte Anfragen werden zusammengefasst.
+        var first = await RequestLoginAsync(app, "neu@example.org");
+        first.EnsureSuccessStatusCode();
+        var result = (await first.Content.ReadFromJsonAsync<LoginRequestResult>(JsonDefaults.Options))!;
+        Assert.True(result.PendingApproval);
+        Assert.False(result.Sent);
+        (await RequestLoginAsync(app, "neu@example.org")).EnsureSuccessStatusCode();
+        (await RequestLoginAsync(app, "zweite@example.org")).EnsureSuccessStatusCode();
+        var adminMail = await WaitForMailContainingAsync(anonymous, Admin, "neu@example.org");
+        Assert.Contains("/verwaltung", adminMail);
+        Assert.Equal(HttpStatusCode.NotFound, (await anonymous.GetAsync("/api/v1/dev/latest-mail?to=neu%40example.org")).StatusCode);
+        var verify = await anonymous.PostAsJsonAsync("/api/v1/auth/verify", new VerifyRequest("neu@example.org", "123456", null, "Test"), JsonDefaults.Options);
+        Assert.Equal(HttpStatusCode.Unauthorized, verify.StatusCode);
+
+        var requests = await admin.GetAsync<List<RegistrationRequestDto>>("/api/v1/admin/registration-requests");
+        Assert.Equal(2, requests.Count);
+        var request = requests.Single(r => r.Email == "neu@example.org");
+        Assert.Equal(2, request.Count);
+
+        // Freischalten: Adresse auf die Liste, Mail mit Anmeldelink, danach normale Anmeldung.
+        (await admin.Http.PostAsync($"/api/v1/admin/registration-requests/{request.Id}/approve", null)).EnsureSuccessStatusCode();
+        var approvedMail = await WaitForMailContainingAsync(anonymous, "neu@example.org", "/login?email=");
+        Assert.Contains("neu%40example.org", approvedMail);
+        Assert.Contains("neu@example.org", (await admin.GetAsync<RegistrationSettingsDto>("/api/v1/admin/registration")).AllowList);
+        var approved = await app.LoginAsync("neu@example.org");
+        Assert.True(approved.Auth.IsNewUser);
+        Assert.Equal(HttpStatusCode.Forbidden, (await approved.Http.GetAsync("/api/v1/admin/registration-requests")).StatusCode);
+
+        // Ablehnen: Anfrage weg, keine Mail.
+        var second = (await admin.GetAsync<List<RegistrationRequestDto>>("/api/v1/admin/registration-requests")).Single();
+        Assert.Equal("zweite@example.org", second.Email);
+        (await admin.Http.DeleteAsync($"/api/v1/admin/registration-requests/{second.Id}")).EnsureSuccessStatusCode();
+        Assert.Empty(await admin.GetAsync<List<RegistrationRequestDto>>("/api/v1/admin/registration-requests"));
+        Assert.Equal(HttpStatusCode.NotFound, (await anonymous.GetAsync("/api/v1/dev/latest-mail?to=zweite%40example.org")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await admin.Http.DeleteAsync($"/api/v1/admin/registration-requests/{second.Id}")).StatusCode);
+    }
+
     [Fact(DisplayName = "Verwaltung: Sperren beendet Sitzungen und API-Zugänge sofort und verhindert die Anmeldung; Entsperren; Löschen")]
     public async Task BlockUnblockDelete()
     {

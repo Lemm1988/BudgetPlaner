@@ -60,6 +60,24 @@ test('Verwaltung: nur für Admins; Konto sperren, entsperren, löschen; Registri
   await anonPage.locator('#email').fill(`fremd-${Date.now()}@example.org`);
   await anonPage.locator('form button[type=submit]').click();
   await expect(anonPage.locator('.form-error')).toContainText('die Registrierung ist eingeschränkt');
+
+  // „Auf Anfrage“: Unbekannte stellen eine Anfrage (ohne Mail), der Admin schaltet frei, danach klappt die Anmeldung.
+  await page.locator('label', { hasText: 'Auf Anfrage' }).click();
+  await page.getByRole('button', { name: 'Speichern' }).click();
+  await expect.poll(async () => (await (await page.request.get('/api/v1/version')).json()).registrationMode).toBe('approval');
+  const requester = `anfrage-${Date.now()}@example.org`;
+  await anonPage.goto('/login');
+  await expect(anonPage.getByText(/stellst du eine Anfrage/)).toBeVisible();
+  await anonPage.locator('#email').fill(requester);
+  await anonPage.locator('form button[type=submit]').click();
+  await expect(anonPage.getByRole('heading', { name: 'Anfrage gesendet' })).toBeVisible();
+  await page.getByRole('button', { name: 'Aktualisieren' }).click();
+  const request = page.locator(`li[data-request="${requester}"]`);
+  await request.getByRole('button', { name: `${requester} freischalten` }).click();
+  await expect(request).toHaveCount(0);
+  await expect(page.getByLabel('Freigegebene Adressen und Domains')).toHaveValue(/anfrage-\d+@example\.org/);
+  await login(anonPage, requester);
+
   await page.locator('label', { hasText: 'Offen' }).click();
   await page.getByRole('button', { name: 'Speichern' }).click();
   await expect.poll(async () => (await (await page.request.get('/api/v1/version')).json()).registrationMode).toBe('open');

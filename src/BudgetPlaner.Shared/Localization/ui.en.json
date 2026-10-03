@@ -347,5 +347,8 @@
   "help.moreInGlossary": "More in the glossary",
   "nav.admin": "Administration",
   "auth.registrationAllowList": "New accounts on this server are by invitation only. Already registered? Just sign in.",
-  "auth.registrationClosed": "Registration is closed – sign-in with an existing account only."
+  "auth.registrationClosed": "Registration is closed – sign-in with an existing account only.",
+  "auth.registrationApproval": "New accounts are approved by the operator: entering your email address sends a request. Already registered? Just sign in.",
+  "auth.pendingTitle": "Request sent",
+  "auth.pendingText": "There's no account for {0} yet – your request is now with the operator. Once you're approved, you'll get an email and can sign in."
 }

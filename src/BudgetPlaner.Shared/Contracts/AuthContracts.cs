@@ -5,8 +5,11 @@ namespace BudgetPlaner.Shared.Contracts;
 /// <summary>Anmeldung/Registrierung per E-Mail anfordern (F-001).</summary>
 public sealed record LoginRequest(string Email, string? Language = null, string? ReturnUrl = null);
 
-/// <summary>Ergebnis: Mail versendet bzw. Wartezeit bei Rate-Limit.</summary>
-public sealed record LoginRequestResult(bool Sent, int RetryAfterSeconds);
+/// <summary>
+/// Ergebnis: Mail versendet bzw. Wartezeit bei Rate-Limit. <paramref name="PendingApproval"/>: neue Adresse im Modus
+/// „Auf Anfrage“ – es wurde keine Mail verschickt, die Anfrage wartet auf Freischaltung durch einen Administrator.
+/// </summary>
+public sealed record LoginRequestResult(bool Sent, int RetryAfterSeconds, bool PendingApproval = false);
 
 /// <summary>Einlösen per Magic-Link-Token oder per E-Mail + 6-stelligem Code (I-10).</summary>
 public sealed record VerifyRequest(string? Email, string? Code, string? Token, string? DeviceName);

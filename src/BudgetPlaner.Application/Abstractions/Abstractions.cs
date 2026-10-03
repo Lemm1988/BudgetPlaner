@@ -35,6 +35,7 @@ public interface IAppDbContext
     DbSet<Feedback> Feedback { get; }
     DbSet<DevMail> DevMails { get; }
     DbSet<ServerSetting> ServerSettings { get; }
+    DbSet<RegistrationRequest> RegistrationRequests { get; }
 
     DatabaseFacade Database { get; }
     Microsoft.EntityFrameworkCore.ChangeTracking.ChangeTracker ChangeTracker { get; }
